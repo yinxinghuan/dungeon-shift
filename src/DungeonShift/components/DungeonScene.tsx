@@ -376,7 +376,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const spawnFocus = worldFor(START.c, START.r).multiply(new THREE.Vector3(0.78, 0, 0.72));
     spawnFocus.y = 0.1;
     const lightOffset = new THREE.Vector3();
-    const deathTiming = { hold: 900, push: 1900, travel: 1400, pullout: 1800 };
+    const deathTiming = { hold: 500, push: 1200, burstHold: 400, travel: 1000, pullout: 900 };
     const deathOrbit = reduceMotion
       ? { closeup: -0.14, spawn: 0.1 }
       : { closeup: -0.46, spawn: 0.32 };
@@ -466,11 +466,16 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       state.shakeUntil = performance.now() + (reduceMotion ? 0 : 140);
       if (state.health > 0) particles.burst(playerRoot.position.x, 0.7, playerRoot.position.z, 0xe36a58, { count: reduceMotion ? 5 : 10, speed: 2.3, up: 2.1, size: 0.09, life: 0.52, emissive: 0.25 });
       sfx.hit(); onHud(hudSnapshot());
-      if (state.health <= 0) respawn();
-      else if (reason === 'guard' && !state.hasLoot) {
-        state.current = { ...START }; state.target = { ...START }; state.from = { ...START }; state.moving = false;
-        playerRoot.position.copy(worldFor(START.c, START.r)); playerRoot.position.y = 0.33;
+      if (state.health <= 0) {
+        mount.dataset.damageOutcome = 'lethal-cinematic';
+        respawn();
       }
+      else if (reason === 'guard' && !state.hasLoot) {
+        const knockback = state.from.c === state.current.c && state.from.r === state.current.r ? state.current : state.from;
+        state.current = { ...knockback }; state.target = { ...knockback }; state.from = { ...knockback }; state.moving = false;
+        playerRoot.position.copy(worldFor(knockback.c, knockback.r)); playerRoot.position.y = 0.33;
+        mount.dataset.damageOutcome = 'guard-knockback';
+      } else mount.dataset.damageOutcome = 'hit-in-place';
     }
 
     function triggerAlert(amount = 35) {
@@ -798,18 +803,24 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       } else if (state.cameraTransition === 'death') {
         const age = state.cameraTransitionElapsed;
         const pushStart = deathTiming.hold;
-        const travelStart = pushStart + deathTiming.push;
+        const burstStart = pushStart + deathTiming.push;
+        const travelStart = burstStart + deathTiming.burstHold;
         if (age < pushStart) {
           cameraFocus.copy(deathHoldFocus);
           camera.zoom = state.deathStartZoom;
           mount.dataset.deathCameraPhase = 'character-highlight';
-        } else if (age < travelStart) {
+        } else if (age < burstStart) {
           const p = THREE.MathUtils.clamp((age - pushStart) / deathTiming.push, 0, 1);
           const eased = p * p * (3 - 2 * p);
           cameraFocus.lerpVectors(deathHoldFocus, deathSubjectFocus, eased);
           orbitAngle = THREE.MathUtils.lerp(0, deathOrbit.closeup, eased);
           camera.zoom = THREE.MathUtils.lerp(state.deathStartZoom, state.deathPeakZoom, eased);
           mount.dataset.deathCameraPhase = 'push-orbit';
+        } else if (age < travelStart) {
+          cameraFocus.copy(deathSubjectFocus);
+          orbitAngle = deathOrbit.closeup;
+          camera.zoom = state.deathPeakZoom;
+          mount.dataset.deathCameraPhase = 'burst-hold';
         } else {
           const p = THREE.MathUtils.clamp((age - travelStart) / deathTiming.travel, 0, 1);
           const eased = p * p * (3 - 2 * p);
