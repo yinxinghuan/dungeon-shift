@@ -39,6 +39,13 @@
 }
 
 .ds-scene { position: absolute; inset: 0; z-index: 1; }
+.ds-scene::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; }
+.ds-scene[data-death='burst']::after {
+  opacity: 1;
+  background: repeating-linear-gradient(0deg, rgba(59,16,12,.88) 0 18px, rgba(5,7,11,.92) 18px 36px);
+  mix-blend-mode: screen;
+  animation: ds-death-shutter .52s steps(6,end) both;
+}
 .ds-scene canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
 .pixel-surface() {
@@ -224,6 +231,7 @@
 
 @keyframes ds-pixel-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ds-result-in { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ds-death-shutter { 0% { opacity: 0; clip-path: inset(48% 0); } 38% { opacity: .86; clip-path: inset(14% 0); } 62% { opacity: .94; clip-path: inset(0); } 100% { opacity: 0; clip-path: inset(0); } }
 
 @media (max-height: 680px) {
   .ds-start { padding-top: calc(16px + env(safe-area-inset-top)); padding-bottom: calc(16px + env(safe-area-inset-bottom)); }

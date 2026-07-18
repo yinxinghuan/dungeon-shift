@@ -22,7 +22,7 @@
 - `src/DungeonShift/hooks/useDungeonWall.ts`：读取最近 6 位用户的最新存档，展开每份存档内全部 `dungeons`，跨作者排序并在展示层限制 24 份。
 - `src/shared/{runtime,save,leaderboard}`：标准平台桥、个人存档与成绩能力；不在游戏内重写桥协议。
 - `src/game-id.ts`：由同步脚本生成的永久 UUID `cb284177-9fff-4e40-9ed7-8381be7b365b`。
-- `doc/`、`_qa/ui-pixel-fidelity/`、`_qa/ui-pixel-states/` 与 `_qa/release-candidate/`：需求、视觉、技术文档、迭代基线和发布候选逐状态运行证据。
+- `doc/`、`_qa/ui-pixel-fidelity/`、`_qa/ui-pixel-states/`、`_qa/release-candidate/` 与 `_qa/interaction-fix/`：需求、视觉、技术文档、迭代基线、发布候选与镜头/视线/死亡/通关回归证据。
 
 ## 3. 核心模块
 
@@ -30,7 +30,11 @@
 - 地牢 schema：墙为 `blocked: Cell[]`，机关为 `traps: TrapSpec[]`，守卫为 `guards: GuardSpec[]`；入口 `(2,6)`、宝库 `(2,0)` 固定。编辑器发布前用 BFS 验证入口到宝库连通。
 - 建造预算：墙 1、尖刺 2、符文 2、守卫 3，总上限 12。替换已占用格会先返还原成本；移动唯一守卫会返还旧守卫成本，避免重复计费。
 - 建造状态：普通提示、验证成功和错误分别使用中性、绿色与红色方块；“套用样板”保留为地图与工具带之间的紧凑辅助操作，不再插入设计稿之外的入口/宝库图例行。新发布关卡统一使用 `SHIFT NN` 展示命名。
-- 3D 配置渲染：场景按地牢墙/机关集合创建模型；守卫在首尾巡逻点间插值，朝向与视线使用巡逻向量；移动和冲刺均检查配置中的墙体。
+- 3D 配置渲染：场景按地牢墙/机关集合创建模型；守卫在首尾巡逻点间插值，模型面部、移动、逻辑检测和视线锥统一使用本地 `+Z`，射线检测墙体后才判定暴露；移动和冲刺均检查配置中的墙体。
+- 镜头与灯光：每局先进入 `introPending → intro → normal`，首帧着色器预热结束后再启动 1,600 ms 环绕，期间冻结计时与输入；常规阶段以 180 ms 时间常数跟随玩家，主方向光、轮廓光和玩家冷青重点光同步移动。死亡使用 `death → revive → normal`，先推进到 1.26 倍再爆裂，入口复活后拉回 1.00 倍。
+- 机制识别：相邻可走格使用运行时 `LineLoop` 方框；玩家、入口、宝物、守卫、尖刺和符文分别使用独立的脚环/菱形、四角柱、竖直信标、红环/感叹号、底板/高锥体、方环/悬浮晶体，颜色之外保留轮廓与高度差异。
+- 生命与复活：普通受击扣 1 点生命；携宝受击不再瞬移入口。生命归零时锁定输入和角色，360 ms 镜头推进后触发体素爆裂与 Canvas 红黑闸门，第 860 ms 回到入口并恢复生命/技能、返还宝物、扣 8 秒，随后用 520 ms 拉远。倒计时归零才进入失败结算。
+- 通关结算：夺宝切换 HUD 文案、增强入口灯池并显示附着于玩家的青色出口箭头；主动进入入口后在下一动画帧触发 React 结算，无旧版 520 ms 延迟。
 - 存档镜像：`useGameSave.savedData` 只负责首次种子；`saveMirror` 是后续唯一读源，每次发布保留完整对象并将个人地牢限制为最近 12 份。
 - 社区墙：网络层对每个 save 写 `for (const dungeon of save.dungeons || [])`；UI 把 `mine` 与社区结果合并，按 `dungeon.id` 去重，再按时间排序。发布后立即可见，不等待约 1 秒的云同步。
 - 跨用户界面：卡片和结算显示作者头像与名字；空头像显示首字母；本人显示“你 / YOU”；资料按钮 `stopPropagation()`，滚动列表卡片使用 `onClick`。
@@ -46,6 +50,7 @@
 - 加机关：扩展 `TrapType`、Builder 工具、MiniMap 语义样式，并在 `DungeonScene.tsx` 添加模型和抵达判定。
 - 加守卫类型/复杂巡逻：扩展 `GuardSpec` 与怪物构造器，把 Builder 的两点自动路线升级为 2–6 点路线编辑。
 - 改潜入数值、计分和反馈：修改 `DungeonScene.tsx` 的状态与结算公式，并同步需求和音效文档。
+- 改入场、跟随、死亡或复活镜头：修改 `DungeonScene.tsx` 的 `cameraTransition` 状态、持续时间与正交 `camera.zoom`；同步 `requirements.md`、`visual.md`，并重跑 `_qa/interaction-fix` 的三组浏览器回归。
 - 改墙/档案策略：个人输入上限在 `publishDungeon`，展示上限和跨用户解析在 `useDungeonWall.ts`；不得在网络层只取数组首项。
 - 换 UI/字体/颜色：修改 `DungeonShift.less`、`main.tsx` 的 Fontsource 入口、`icons.tsx` 与 `doc/visual.md`；继续保持像素 UI / 清晰 3D 的边界、硬角图标、语义颜色和 44 px 目标。
 - 改平台能力：只使用 `src/shared` 标准模块；事件文案在 `DungeonShift.tsx`，永久 UUID 以 `games/games.json` 为唯一来源。

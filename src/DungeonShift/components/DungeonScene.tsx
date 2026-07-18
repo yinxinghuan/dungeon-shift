@@ -41,8 +41,8 @@ function visionGeometry(length = 3.45, half = 0.72) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute([
     0, 0, 0,
-    length, 0, -half * length,
-    length, 0, half * length,
+    -half * length, 0, length,
+    half * length, 0, length,
   ], 3));
   geo.setIndex([0, 1, 2]);
   geo.computeVertexNormals();
@@ -96,9 +96,9 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     key.shadow.mapSize.set(1024, 1024);
     key.shadow.camera.left = -7; key.shadow.camera.right = 7;
     key.shadow.camera.top = 8; key.shadow.camera.bottom = -8;
-    scene.add(key);
+    scene.add(key, key.target);
     const rim = new THREE.DirectionalLight(0x6f7cff, 0.7);
-    rim.position.set(-7, 6, -5); scene.add(rim);
+    rim.position.set(-7, 6, -5); scene.add(rim, rim.target);
     const vaultLight = new THREE.PointLight(0xffb83f, 4.0, 5.2, 2);
     vaultLight.position.copy(worldFor(VAULT.c, VAULT.r)).add(new THREE.Vector3(0, 1.2, 0));
     scene.add(vaultLight);
@@ -116,7 +116,9 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const tileMat = new THREE.MeshStandardMaterial({ color: 0x918a80, roughness: 0.86 });
     const edgeMat = new THREE.MeshStandardMaterial({ color: 0x5c5a54, roughness: 0.9 });
     const selectable: THREE.Mesh[] = [];
+    const visionBlockers: THREE.Mesh[] = [];
     const tiles = new Map<string, THREE.Mesh>();
+    const moveMarkers = new Map<string, THREE.LineLoop>();
     for (let r = 0; r < ROWS; r += 1) {
       for (let c = 0; c < COLS; c += 1) {
         const keyCell = cellKey(c, r);
@@ -133,6 +135,16 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         }
         tile.receiveShadow = true;
         scene.add(tile); selectable.push(tile); tiles.set(keyCell, tile);
+        const moveMarker = new THREE.LineLoop(
+          new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-0.42, 0, -0.42), new THREE.Vector3(0.42, 0, -0.42),
+            new THREE.Vector3(0.42, 0, 0.42), new THREE.Vector3(-0.42, 0, 0.42),
+          ]),
+          new THREE.LineBasicMaterial({ color: 0x83e2ee, transparent: true, opacity: 0.72, depthWrite: false }),
+        );
+        moveMarker.position.copy(tile.position); moveMarker.position.y += 0.125;
+        moveMarker.visible = false; moveMarker.renderOrder = 3;
+        scene.add(moveMarker); moveMarkers.set(keyCell, moveMarker);
       }
     }
 
@@ -143,7 +155,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       wall.position.copy(worldFor(c, r)); wall.position.y = 0.51;
       wall.castShadow = wall.receiveShadow = true;
       const cap = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.08, 0.82), new THREE.MeshStandardMaterial({ color: 0xb9b1a5, roughness: 0.8 }));
-      cap.position.y = 0.44; wall.add(cap); scene.add(wall);
+      cap.position.y = 0.44; wall.add(cap); scene.add(wall); visionBlockers.push(wall);
     }
 
     // Raised perimeter pieces make the dungeon read as a physical model.
@@ -171,14 +183,27 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     entrancePool.rotation.x = -Math.PI / 2;
     entrancePool.position.copy(worldFor(START.c, START.r)); entrancePool.position.y = 0.105;
     scene.add(entrancePool);
+    const entrancePosts = new THREE.Group();
+    const entrancePostMaterial = new THREE.MeshBasicMaterial({ color: 0x65e6ee, transparent: true, opacity: 0.88 });
+    for (const [x, z] of [[-0.39, -0.39], [0.39, -0.39], [-0.39, 0.39], [0.39, 0.39]]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.58, 0.09), entrancePostMaterial);
+      post.position.set(x, 0.29, z); entrancePosts.add(post);
+    }
+    entrancePosts.position.copy(worldFor(START.c, START.r)); entrancePosts.position.y = 0.28;
+    scene.add(entrancePosts);
 
     const relic = new THREE.Group();
     const relicCore = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.28, 0),
+      new THREE.OctahedronGeometry(0.34, 0),
       new THREE.MeshStandardMaterial({ color: 0xffe2a0, emissive: 0xe7b95c, emissiveIntensity: 1.1, roughness: 0.32 }),
     );
     const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.44, 0.32, 6), new THREE.MeshStandardMaterial({ color: 0x766445, roughness: 0.7, metalness: 0.2 }));
-    pedestal.position.y = -0.27; relic.add(relicCore, pedestal);
+    const relicBeacon = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.13, 1.55, 4),
+      new THREE.MeshBasicMaterial({ color: 0xffd578, transparent: true, opacity: 0.34, depthWrite: false }),
+    );
+    relicBeacon.position.y = 0.58;
+    pedestal.position.y = -0.27; relic.add(relicBeacon, relicCore, pedestal);
     relic.position.copy(worldFor(VAULT.c, VAULT.r)); relic.position.y = 0.9; scene.add(relic);
     const vaultPool = new THREE.Mesh(
       new THREE.CircleGeometry(1.38, 32),
@@ -191,10 +216,16 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const spikeGroups: THREE.Group[] = [];
     const spikeMat = new THREE.MeshStandardMaterial({ color: 0x8b8c83, roughness: 0.52, metalness: 0.35 });
     for (const trap of dungeon.traps.filter((item) => item.type === 'spike')) {
+      const spikeBase = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 0.07, 0.9),
+        new THREE.MeshStandardMaterial({ color: 0x6f211b, emissive: 0x3b100c, emissiveIntensity: 0.5, roughness: 0.72 }),
+      );
+      spikeBase.position.copy(worldFor(trap.cell.c, trap.cell.r)); spikeBase.position.y += 0.16;
+      scene.add(spikeBase);
       const spikeGroup = new THREE.Group();
       for (let x = -1; x <= 1; x += 1) for (let z = -1; z <= 1; z += 1) {
-        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.42, 4), spikeMat);
-        spike.position.set(x * 0.27, 0.14, z * 0.27); spike.rotation.y = Math.PI / 4; spike.castShadow = true; spikeGroup.add(spike);
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.52, 4), spikeMat);
+        spike.position.set(x * 0.27, 0.18, z * 0.27); spike.rotation.y = Math.PI / 4; spike.castShadow = true; spikeGroup.add(spike);
       }
       spikeGroup.position.copy(worldFor(trap.cell.c, trap.cell.r)); scene.add(spikeGroup); spikeGroups.push(spikeGroup);
     }
@@ -205,6 +236,11 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         new THREE.MeshBasicMaterial({ color: 0xa43f3d, transparent: true, opacity: 0.76, side: THREE.DoubleSide }),
       );
       rune.rotation.x = -Math.PI / 2; rune.rotation.z = Math.PI / 4;
+      const runeCrystal = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.16, 0),
+        new THREE.MeshStandardMaterial({ color: 0xc879ee, emissive: 0x8e4db3, emissiveIntensity: 1.0, roughness: 0.38 }),
+      );
+      runeCrystal.position.z = 0.24; runeCrystal.rotation.x = Math.PI / 2; rune.add(runeCrystal);
       rune.position.copy(worldFor(trap.cell.c, trap.cell.r)); rune.position.y += 0.16; scene.add(rune);
       runes.set(cellKey(trap.cell.c, trap.cell.r), rune);
     }
@@ -221,6 +257,15 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     playerMarker.rotation.x = Math.PI / 2;
     playerMarker.position.y = 0.04;
     playerRoot.add(playerMarker);
+    const playerFocusLight = new THREE.PointLight(0x64dce8, 1.45, 4.2, 2);
+    playerFocusLight.position.set(0, 1.25, 0);
+    playerRoot.add(playerFocusLight);
+    const playerBeacon = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.12, 0),
+      new THREE.MeshBasicMaterial({ color: 0x83e2ee, depthTest: false }),
+    );
+    playerBeacon.position.y = 1.38; playerBeacon.renderOrder = 8;
+    playerRoot.add(playerBeacon);
 
     const guardRoot = new THREE.Group();
     const guardModel = normalizeModel(vampire(), 1.03);
@@ -230,28 +275,65 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const guardLight = new THREE.PointLight(0xd63f55, 0.8, 2.5, 2);
     guardLight.position.set(0, 0.78, 0);
     guardRoot.add(guardLight);
+    const guardMarker = new THREE.Mesh(
+      new THREE.TorusGeometry(0.39, 0.045, 4, 24),
+      new THREE.MeshBasicMaterial({ color: 0xeb7464, transparent: true, opacity: 0.82 }),
+    );
+    guardMarker.rotation.x = Math.PI / 2; guardMarker.position.y = 0.035;
+    guardRoot.add(guardMarker);
 
     const vision = new THREE.Mesh(
       visionGeometry(3.45, 0.24),
-      new THREE.MeshBasicMaterial({ color: 0xe36a58, transparent: true, opacity: 0.23, side: THREE.DoubleSide, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0xe94f4a, transparent: true, opacity: 0.24, side: THREE.DoubleSide, depthWrite: false }),
     );
-    vision.rotation.x = -Math.PI / 2; vision.position.y = 0.18; guardRoot.add(vision);
+    vision.position.y = 0.16; guardRoot.add(vision);
+    const visionOutline = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0.19, 0),
+        new THREE.Vector3(-0.83, 0.19, 3.45),
+        new THREE.Vector3(0.83, 0.19, 3.45),
+        new THREE.Vector3(0, 0.19, 0),
+      ]),
+      new THREE.LineBasicMaterial({ color: 0xff796b, transparent: true, opacity: 0.82, depthWrite: false }),
+    );
+    visionOutline.renderOrder = 4; guardRoot.add(visionOutline);
+    const alertMarker = new THREE.Group();
+    const alertMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0xff806f, depthTest: false });
+    const alertBar = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.34, 0.11), alertMarkerMaterial);
+    alertBar.position.y = 0.22;
+    const alertDot = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.13), alertMarkerMaterial);
+    alertDot.position.y = -0.08;
+    alertMarker.add(alertBar, alertDot); alertMarker.position.y = 1.36; alertMarker.visible = false; alertMarker.renderOrder = 8;
+    guardRoot.add(alertMarker);
+
+    const exitArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(), 1.05, 0x65e6ee, 0.28, 0.18);
+    exitArrow.visible = false; exitArrow.line.material.depthTest = false; exitArrow.cone.material.depthTest = false;
+    exitArrow.line.renderOrder = 7; exitArrow.cone.renderOrder = 7; scene.add(exitArrow);
 
     const particles = createParticles(scene, THREE, { poolSize: 96 });
     const rings: Array<{ mesh: THREE.Mesh; life: number; max: number }> = [];
 
     const raycaster = new THREE.Raycaster();
+    const visionRaycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     const clock = new THREE.Clock();
     const baseCamera = camera.position.clone();
+    const baseKey = key.position.clone();
+    const baseRim = rim.position.clone();
+    const cameraFocus = new THREE.Vector3(0, 0.1, 0);
+    const cameraGoal = new THREE.Vector3();
+    const lightOffset = new THREE.Vector3();
     const state = {
       health: 3, alert: 0, hasLoot: false, smokeReady: true, dashReady: true, dashArmed: false,
       smokeUntil: 0, alarms: 0, timeLeft: 75, elapsed: 0, moving: false, moveT: 0,
       moveDuration: 0.22, current: { ...START }, from: { ...START }, target: { ...START },
       guardProgress: 0, guardDir: 1, guardPause: 0.5, sightTime: 0, chaseUntil: 0,
       invulnerableUntil: 0, usedRunes: new Set<string>(), ended: false, freezeUntil: 0, shakeUntil: 0,
+      respawning: false, cameraTransition: (active ? 'introPending' : 'normal') as 'normal' | 'introPending' | 'intro' | 'death' | 'revive', cameraTransitionAt: 0,
       lastHud: 0, selectedTile: null as THREE.Mesh | null,
     };
+    mount.dataset.effectActive = active ? 'true' : 'false';
+    mount.dataset.initialCameraTransition = state.cameraTransition;
 
     function hudSnapshot(): HudState {
       return {
@@ -271,23 +353,52 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       scene.add(mesh); rings.push({ mesh, life: duration, max: duration });
     }
 
+    let finishRaf = 0;
     function finish(won: boolean, reason: RunResult['reason']) {
       if (state.ended) return;
       state.ended = true;
       const score = won ? Math.max(0, Math.round(2000 + state.timeLeft * 20 + state.health * 250 + (state.smokeReady ? 150 : 0) + (state.dashReady ? 150 : 0) - state.alarms * 180)) : 0;
       if (won) sfx.win(); else sfx.lose();
-      window.setTimeout(() => onFinish({ ...hudSnapshot(), won, reason, score }), reduceMotion ? 80 : 520);
+      const result = { ...hudSnapshot(), won, reason, score };
+      onHud(hudSnapshot());
+      finishRaf = requestAnimationFrame(() => onFinish(result));
+    }
+
+    let deathBurstTimer = 0;
+    let respawnTimer = 0;
+    function respawn() {
+      if (state.respawning || state.ended) return;
+      state.respawning = true; state.moving = false; state.dashArmed = false;
+      state.freezeUntil = performance.now() + (reduceMotion ? 360 : 860);
+      state.shakeUntil = performance.now() + (reduceMotion ? 0 : 90);
+      state.cameraTransition = 'death'; state.cameraTransitionAt = performance.now();
+      state.timeLeft = Math.max(1, state.timeLeft - 8); state.alert = 0; state.hasLoot = false;
+      state.smokeReady = true; state.dashReady = true; state.smokeUntil = 0;
+      relic.visible = true; exitArrow.visible = false; mount.dataset.death = 'locked'; onHud(hudSnapshot());
+      deathBurstTimer = window.setTimeout(() => {
+        playerRoot.visible = false; mount.dataset.death = 'burst';
+        particles.burst(playerRoot.position.x, 0.7, playerRoot.position.z, 0xeb7464, { count: reduceMotion ? 6 : 10, speed: 3.1, up: 2.7, size: 0.14, life: 0.52, emissive: 0.55 });
+        sfx.lose();
+      }, reduceMotion ? 180 : 360);
+      respawnTimer = window.setTimeout(() => {
+        state.health = 3; state.current = { ...START }; state.target = { ...START }; state.from = { ...START };
+        playerRoot.position.copy(worldFor(START.c, START.r)); playerRoot.position.y = 0.33;
+        playerRoot.visible = true; state.respawning = false; state.invulnerableUntil = state.elapsed + 1.2;
+        state.cameraTransition = 'revive'; state.cameraTransitionAt = performance.now();
+        mount.dataset.death = 'recovering'; addRing(playerRoot.position, 0x65e6ee, 0.52); onHud(hudSnapshot());
+        requestAnimationFrame(() => { if (mount.dataset.death === 'recovering') delete mount.dataset.death; });
+      }, reduceMotion ? 360 : 860);
     }
 
     function hit(reason = 'guard') {
-      if (!active || state.ended || state.elapsed < state.invulnerableUntil) return;
+      if (!active || state.ended || state.respawning || state.elapsed < state.invulnerableUntil) return;
       state.health -= 1; state.invulnerableUntil = state.elapsed + 1.0;
       state.freezeUntil = performance.now() + (reduceMotion ? 0 : 55);
       state.shakeUntil = performance.now() + (reduceMotion ? 0 : 140);
-      particles.burst(playerRoot.position.x, 0.7, playerRoot.position.z, 0xe36a58, { count: reduceMotion ? 5 : 10, speed: 2.3, up: 2.1, size: 0.09, life: 0.52, emissive: 0.25 });
+      if (state.health > 0) particles.burst(playerRoot.position.x, 0.7, playerRoot.position.z, 0xe36a58, { count: reduceMotion ? 5 : 10, speed: 2.3, up: 2.1, size: 0.09, life: 0.52, emissive: 0.25 });
       sfx.hit(); onHud(hudSnapshot());
-      if (state.health <= 0) finish(false, 'caught');
-      else if (reason === 'guard') {
+      if (state.health <= 0) respawn();
+      else if (reason === 'guard' && !state.hasLoot) {
         state.current = { ...START }; state.target = { ...START }; state.from = { ...START }; state.moving = false;
         playerRoot.position.copy(worldFor(START.c, START.r)); playerRoot.position.y = 0.33;
       }
@@ -308,6 +419,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       particles.burst(relic.position.x, 0.85, relic.position.z, 0xe7b95c, { count: reduceMotion ? 12 : 24, speed: 3.2, up: 3.2, size: 0.12, life: 0.7, emissive: 0.65 });
       addRing(relic.position, 0xffe2a0, 0.7); sfx.loot(); onHud(hudSnapshot());
       state.chaseUntil = state.elapsed + 3.5;
+      entranceRing.scale.setScalar(1.34);
     }
 
     function resolveCell() {
@@ -319,7 +431,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     }
 
     function tryMove(c: number, r: number) {
-      if (!active || state.ended || state.moving) return;
+      if (!active || state.ended || state.respawning || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending' || state.moving) return;
       const dc = c - state.current.c, dr = r - state.current.r;
       if (Math.abs(dc) + Math.abs(dr) !== 1 || BLOCKED.has(cellKey(c, r))) { sfx.reject(); return; }
       let target = { c, r };
@@ -337,13 +449,13 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     }
 
     actionsRef.current.useSmoke = () => {
-      if (!active || !state.smokeReady || state.ended) return;
+      if (!active || !state.smokeReady || state.ended || state.respawning || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') return;
       state.smokeReady = false; state.smokeUntil = state.elapsed + 3;
       for (let i = 0; i < 3; i += 1) particles.puffFx(playerRoot.position.x, 0.45 + i * 0.12, playerRoot.position.z, { count: reduceMotion ? 3 : 6, color: 0xaaa59c, size: 0.22, life: 0.8, grav: 0.3 });
       sfx.smoke(); onHud(hudSnapshot());
     };
     actionsRef.current.armDash = () => {
-      if (!active || !state.dashReady || state.ended) return;
+      if (!active || !state.dashReady || state.ended || state.respawning || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') return;
       state.dashArmed = !state.dashArmed; onHud(hudSnapshot());
       addRing(playerRoot.position, 0x3fb6ac, 0.36);
     };
@@ -387,18 +499,42 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       const rawDt = Math.min(clock.getDelta(), 0.05);
       const now = performance.now();
       const frozen = active && now < state.freezeUntil;
-      const dt = frozen ? 0 : rawDt;
+      const dt = frozen || (active && (state.cameraTransition === 'intro' || state.cameraTransition === 'introPending')) ? 0 : rawDt;
       const t = clock.elapsedTime;
 
       relicCore.rotation.y += rawDt * 1.5;
       relicCore.position.y = Math.sin(t * 2.4) * 0.06;
+      relicBeacon.rotation.y -= rawDt * 0.7;
+      (relicBeacon.material as THREE.MeshBasicMaterial).opacity = 0.28 + Math.sin(t * 2.2) * 0.07;
       vaultLight.intensity = 3.8 + Math.sin(t * 2.2) * 0.35;
-      entranceLight.intensity = 4.0 + Math.sin(t * 1.7) * 0.3;
-      entrancePool.material.opacity = 0.14 + Math.sin(t * 1.7) * 0.025;
+      const extractionBoost = state.hasLoot && !state.ended ? 1.55 : 1;
+      entranceLight.intensity = (4.0 + Math.sin(t * 1.7) * 0.3) * extractionBoost;
+      entrancePool.material.opacity = (0.14 + Math.sin(t * 1.7) * 0.025) * extractionBoost;
+      entranceRing.scale.lerp(new THREE.Vector3(extractionBoost > 1 ? 1.34 : 1, extractionBoost > 1 ? 1.34 : 1, extractionBoost > 1 ? 1.34 : 1), Math.min(1, rawDt * 8));
+      entrancePosts.scale.y = extractionBoost > 1 ? 1.12 + Math.sin(t * 5) * 0.04 : 1;
+      entrancePostMaterial.opacity = extractionBoost > 1 ? 1 : 0.82 + Math.sin(t * 2) * 0.08;
       vaultPool.material.opacity = 0.13 + Math.sin(t * 2.2) * 0.025;
-      runes.forEach((rune) => { (rune.material as THREE.MeshBasicMaterial).opacity = 0.48 + Math.sin(t * 4) * 0.22; });
+      runes.forEach((rune) => {
+        (rune.material as THREE.MeshBasicMaterial).opacity = 0.52 + Math.sin(t * 4) * 0.2;
+        if (rune.children[0]) rune.children[0].rotation.y += rawDt * 1.8;
+      });
       const spikeActive = (state.elapsed % 1.4) > 1.1;
       spikeGroups.forEach((spikeGroup) => { spikeGroup.position.y += ((spikeActive ? 0.17 : -0.12) - spikeGroup.position.y) * Math.min(1, rawDt * 18); });
+      playerBeacon.position.y = 1.38 + Math.sin(t * 4.2) * 0.045;
+      playerBeacon.rotation.y += rawDt * 1.4;
+      guardMarker.scale.setScalar(1 + Math.sin(t * 3.2) * 0.035);
+
+      let visibleMoveTargets = 0;
+      moveMarkers.forEach((marker, keyCell) => {
+        const [c, r] = keyCell.split(',').map(Number);
+        const adjacent = Math.abs(c - state.current.c) + Math.abs(r - state.current.r) === 1;
+        marker.visible = active && !state.ended && !state.respawning && !state.moving && adjacent;
+        if (marker.visible) {
+          visibleMoveTargets += 1;
+          (marker.material as THREE.LineBasicMaterial).opacity = 0.58 + Math.sin(t * 5) * 0.12;
+        }
+      });
+      mount.dataset.moveTargets = String(visibleMoveTargets);
 
       if (active && !state.ended) {
         state.elapsed += dt; state.timeLeft -= dt; state.alert = Math.max(0, state.alert - dt * 8);
@@ -433,7 +569,9 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         }
         const patrolFrom = worldFor(guardStart.c, guardStart.r), patrolTo = worldFor(guardEnd.c, guardEnd.r);
         guardRoot.position.lerpVectors(patrolFrom, patrolTo, state.guardProgress); guardRoot.position.y = 0.33 + Math.abs(Math.sin(t * (state.elapsed < state.chaseUntil ? 9 : 6))) * 0.035;
-        guardRoot.rotation.y = Math.atan2((guardEnd.c - guardStart.c) * state.guardDir, (guardEnd.r - guardStart.r) * state.guardDir);
+        const patrolDx = (guardEnd.c - guardStart.c) * state.guardDir;
+        const patrolDz = (guardEnd.r - guardStart.r) * state.guardDir;
+        guardRoot.rotation.y = Math.atan2(patrolDx, patrolDz);
         guardLight.intensity = state.elapsed < state.chaseUntil ? 2.4 : 0.8 + Math.sin(t * 2.6) * 0.12;
         if (guardRig) {
           const gait = state.guardPause > 0 ? 0 : Math.sin(t * (state.elapsed < state.chaseUntil ? 10 : 7)) * 0.58;
@@ -443,14 +581,23 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
 
         const toPlayer = playerRoot.position.clone().sub(guardRoot.position); toPlayer.y = 0;
         const distance = toPlayer.length();
-        const facing = new THREE.Vector3((guardEnd.c - guardStart.c) * state.guardDir, 0, (guardEnd.r - guardStart.r) * state.guardDir).normalize();
-        const visible = state.elapsed > 1.2 && state.elapsed > state.smokeUntil && distance < 3.45 && toPlayer.normalize().dot(facing) > 0.84;
+        const facing = new THREE.Vector3(0, 0, 1).applyQuaternion(guardRoot.quaternion).normalize();
+        const sightDirection = distance > 0.001 ? toPlayer.clone().normalize() : new THREE.Vector3();
+        visionRaycaster.set(guardRoot.position.clone().add(new THREE.Vector3(0, 0.52, 0)), sightDirection);
+        const wallHit = visionRaycaster.intersectObjects(visionBlockers, false)[0];
+        const lineClear = !wallHit || wallHit.distance >= distance - 0.18;
+        const visible = state.elapsed > 1.2 && state.elapsed > state.smokeUntil && distance < 3.45 && sightDirection.dot(facing) > 0.84 && lineClear;
+        mount.dataset.guardSight = visible ? 'visible' : lineClear ? 'outside-cone' : 'blocked';
         if (visible) {
           state.sightTime += dt;
-          vision.material.opacity = 0.34 + Math.sin(t * 12) * 0.08;
+          vision.material.opacity = 0.42 + Math.sin(t * 12) * 0.1;
+          visionOutline.material.opacity = 0.92 + Math.sin(t * 12) * 0.08;
+          alertMarker.visible = true; alertMarker.scale.setScalar(1 + Math.max(0, Math.sin(t * 12)) * 0.18);
           if (state.sightTime >= 0.32) { state.sightTime = -2.1; triggerAlert(35); }
         } else {
-          state.sightTime = Math.max(0, state.sightTime - dt * 2); vision.material.opacity = 0.22;
+          state.sightTime = Math.max(0, state.sightTime - dt * 2); vision.material.opacity = 0.24;
+          visionOutline.material.opacity = 0.82; alertMarker.visible = state.elapsed < state.chaseUntil;
+          alertMarker.scale.setScalar(state.elapsed < state.chaseUntil ? 1 + Math.max(0, Math.sin(t * 10)) * 0.14 : 1);
         }
         if (distance < 0.52 && state.elapsed > state.smokeUntil) hit('guard');
 
@@ -470,15 +617,87 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       }
       particles.updateParticles(rawDt);
 
-      camera.position.copy(baseCamera);
+      let orbitAngle = 0;
+      if (state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') {
+        const duration = reduceMotion ? 240 : 1600;
+        const p = state.cameraTransition === 'introPending' ? 0 : Math.min(1, (now - state.cameraTransitionAt) / duration);
+        const eased = p * p * (3 - 2 * p);
+        cameraFocus.set(0, 0.1, THREE.MathUtils.lerp(-1.25, playerRoot.position.z * 0.36, eased));
+        orbitAngle = (1 - eased) * 0.38;
+        camera.zoom = 0.86 + eased * 0.14;
+        if (p >= 1) state.cameraTransition = 'normal';
+      } else {
+        cameraGoal.set(playerRoot.position.x * 0.42, 0.1, playerRoot.position.z * 0.36);
+        cameraFocus.lerp(cameraGoal, 1 - Math.exp(-rawDt / 0.18));
+      }
+      const orbitCos = Math.cos(orbitAngle), orbitSin = Math.sin(orbitAngle);
+      camera.position.set(
+        baseCamera.x * orbitCos - baseCamera.z * orbitSin + cameraFocus.x,
+        baseCamera.y,
+        baseCamera.x * orbitSin + baseCamera.z * orbitCos + cameraFocus.z,
+      );
       if (now < state.shakeUntil) { camera.position.x += (Math.random() - 0.5) * 0.06; camera.position.y += (Math.random() - 0.5) * 0.04; }
-      camera.lookAt(0, 0.1, 0.18);
+      if (state.cameraTransition === 'death') {
+        const duration = reduceMotion ? 180 : 360;
+        const p = Math.min(1, (now - state.cameraTransitionAt) / duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        camera.zoom = 1 + eased * 0.26;
+      } else if (state.cameraTransition === 'revive') {
+        const duration = reduceMotion ? 180 : 520;
+        const p = Math.min(1, (now - state.cameraTransitionAt) / duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        camera.zoom = 1.26 - eased * 0.26;
+        if (p >= 1) state.cameraTransition = 'normal';
+      } else if (state.cameraTransition !== 'intro' && state.cameraTransition !== 'introPending') camera.zoom = 1;
+      camera.updateProjectionMatrix();
+      camera.lookAt(cameraFocus.x, cameraFocus.y, cameraFocus.z);
+      key.position.copy(baseKey).add(lightOffset.set(playerRoot.position.x, 0, playerRoot.position.z));
+      key.target.position.set(playerRoot.position.x, 0.18, playerRoot.position.z);
+      rim.position.copy(baseRim).add(lightOffset.set(playerRoot.position.x * 0.55, 0, playerRoot.position.z * 0.55));
+      rim.target.position.set(playerRoot.position.x, 0.18, playerRoot.position.z);
+      if (state.hasLoot && !state.ended) {
+        const toExit = worldFor(START.c, START.r).sub(playerRoot.position); toExit.y = 0;
+        exitArrow.visible = toExit.lengthSq() > 0.08;
+        if (exitArrow.visible) {
+          exitArrow.position.copy(playerRoot.position).add(new THREE.Vector3(0, 1.34, 0));
+          exitArrow.setDirection(toExit.normalize()); exitArrow.setLength(1.05, 0.28, 0.18);
+        }
+      } else exitArrow.visible = false;
+      mount.dataset.exitArrow = exitArrow.visible ? 'visible' : 'hidden';
+      mount.dataset.playerPosition = `${playerRoot.position.x.toFixed(3)},${playerRoot.position.z.toFixed(3)}`;
+      mount.dataset.currentCell = `${state.current.c},${state.current.r}`;
+      mount.dataset.health = String(state.health);
+      mount.dataset.respawning = state.respawning ? 'true' : 'false';
+      mount.dataset.cameraTransition = state.cameraTransition;
+      mount.dataset.cameraZoom = camera.zoom.toFixed(3);
+      mount.dataset.cameraTransitionAge = String(Math.round(now - state.cameraTransitionAt));
+      mount.dataset.cameraFocus = `${cameraFocus.x.toFixed(3)},${cameraFocus.z.toFixed(3)}`;
+      mount.dataset.guardForward = `${new THREE.Vector3(0, 0, 1).applyQuaternion(guardRoot.quaternion).x.toFixed(3)},${new THREE.Vector3(0, 0, 1).applyQuaternion(guardRoot.quaternion).z.toFixed(3)}`;
+      mount.dataset.readabilityMarkers = 'player,entrance,relic,guard,spike,rune,moves';
       composer.render();
     }
+    if (active) {
+      const openingAngle = 0.38;
+      const openingCos = Math.cos(openingAngle), openingSin = Math.sin(openingAngle);
+      cameraFocus.set(0, 0.1, -1.25); camera.zoom = 0.86;
+      camera.position.set(
+        baseCamera.x * openingCos - baseCamera.z * openingSin + cameraFocus.x,
+        baseCamera.y,
+        baseCamera.x * openingSin + baseCamera.z * openingCos + cameraFocus.z,
+      );
+      camera.lookAt(cameraFocus); camera.updateProjectionMatrix();
+    }
+    composer.render();
+    state.cameraTransitionAt = active ? 0 : performance.now();
+    const introStartTimer = window.setTimeout(() => {
+      if (state.cameraTransition === 'introPending') {
+        state.cameraTransition = 'intro'; state.cameraTransitionAt = performance.now();
+      }
+    }, 60);
     animate();
 
     return () => {
-      cancelAnimationFrame(raf); observer.disconnect();
+      cancelAnimationFrame(raf); cancelAnimationFrame(finishRaf); clearTimeout(introStartTimer); clearTimeout(deathBurstTimer); clearTimeout(respawnTimer); observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
       actionsRef.current = { useSmoke: () => {}, armDash: () => {} };
