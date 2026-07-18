@@ -12,9 +12,11 @@
 ## 2. 目录结构
 
 - `src/DungeonShift/DungeonShift.tsx`：`start / builder / archive / playing / won / lost / leaderboard` 状态机，存档镜像、发布、挑战上下文、通知与成绩提交。
-- `src/DungeonShift/dungeons.ts`：5×7 关卡常量、12 点预算、样板地牢、地格工具与 BFS 通路校验。
+- `src/DungeonShift/dungeons.ts`：5×7 关卡常量、12 点预算、旧数据归一化、样板地牢、守卫路线校验与完整任务求解。
+- `src/DungeonShift/roster.ts`：14 名潜入者与 6 种守卫名册、i18n 名称映射、旧类型回退、稳定玩家默认和六种无重复建造轮换。
 - `src/DungeonShift/types.ts`：可序列化地牢、陷阱、守卫、存档、作者与运行结果类型。
 - `src/DungeonShift/components/Builder.tsx`：地牢主编辑器、工具替换、预算核算、守卫巡逻起点和发布门禁。
+- `src/DungeonShift/components/GuardPreview.tsx`：复用正式怪物工厂的低功耗透明 Three.js 预览；切换守卫时同步重建，卸载时释放模型几何、预览自有平台材质与 WebGL renderer，不销毁 `prims.js` 的共享材质缓存。
 - `src/DungeonShift/components/Archive.tsx`：本人/社区档案、乐观合并、作者资料入口、平台外 CTA 与挑战选择。
 - `src/DungeonShift/components/DungeonMiniMap.tsx`：编辑器与档案卡共用的 5×7 DOM 预览。
 - `src/DungeonShift/components/DungeonScene.tsx`：按 `DungeonConfig` 渲染 3D 关卡，处理输入、碰撞、守卫视野、机关、动画与特效。
@@ -22,14 +24,15 @@
 - `src/DungeonShift/hooks/useDungeonWall.ts`：读取最近 6 位用户的最新存档，展开每份存档内全部 `dungeons`，跨作者排序并在展示层限制 24 份。
 - `src/shared/{runtime,save,leaderboard}`：标准平台桥、个人存档与成绩能力；不在游戏内重写桥协议。
 - `src/game-id.ts`：由同步脚本生成的永久 UUID `cb284177-9fff-4e40-9ed7-8381be7b365b`。
-- `doc/` 与 `_qa/{interaction-fix,intro-reveal-v2,camera-pinch-v2,death-video-v2,mobile-extract-v2,result-mobile-v2}/`：需求、视觉、技术文档，以及入场建场、镜头、灯光、双指缩放、死亡录像、撤离提示和 360×640 字号回归证据。
+- `doc/` 与 `_qa/{interaction-fix,intro-reveal-v2,camera-pinch-v2,death-video-v2,roster-solver-v1,roster-solver-v2}/`：需求、视觉、技术文档，以及入场镜头、死亡录像、完整路线拦截、角色选择、怪物预览与中英文 360×640 回归证据。
 
 ## 3. 核心模块
 
 - 状态与主循环：React 只维护屏幕、HUD、地牢与结算；位置、计时、巡逻、警戒和骨骼枢轴动画留在 `requestAnimationFrame` 场景内，HUD 100 ms 同步一次。
-- 地牢 schema：墙为 `blocked: Cell[]`，机关为 `traps: TrapSpec[]`，守卫为 `guards: GuardSpec[]`；入口 `(2,6)`、宝库 `(2,0)` 固定。编辑器发布前用 BFS 验证入口到宝库连通。
+- 地牢 schema：墙为 `blocked: Cell[]`，机关为 `traps: TrapSpec[]`，守卫为 `guards: GuardSpec[]`；入口 `(2,6)`、宝库 `(2,0)` 固定。`normalizeDungeon()` 拒绝结构损坏的数据并把旧/未知守卫类型回退为吸血鬼；`validateDungeon()` 先检查单守卫的两个巡逻端点必须位于地图内、同轴、不穿墙、不压机关，再搜索 `(cell, hasLoot, mandatoryDamage)` 状态。进入尖刺累计 1 点必经伤害，只有取得宝物后回到入口且最低伤害不超过 2 才返回 `ready`；结果区分 `missing-guard / blocked-route / lethal-route / invalid-guard / ready`。
 - 建造预算：墙 1、尖刺 2、符文 2、守卫 3，总上限 12。替换已占用格会先返还原成本；移动唯一守卫会返还旧守卫成本，避免重复计费。
-- 建造状态：普通提示、验证成功和错误分别使用中性、绿色与红色方块；“套用样板”保留为地图与工具带之间的紧凑辅助操作，不再插入设计稿之外的入口/宝库图例行。新发布关卡统一使用 `SHIFT NN` 展示命名。
+- 建造状态：普通提示、验证成功和错误分别使用中性、绿色与红色方块；封路、最低 3 点必经伤害与异常巡逻使用独立中英文文案。Builder 先校验并禁用发布，`publishDungeon()` 保存前再次校验形成双重门禁；社区档案读取时只保留归一化成功且验证为 `ready` 的地图。新发布关卡统一使用 `SHIFT NN` 展示命名。
+- 角色名册：个人存档可选字段 `infiltrator` 保存 14 名人类之一；旧存档使用 `telegramId` 或稳定访客种子生成默认，开始页左右键写入本地镜像并持久化。`DungeonScene` 按 `BASE_CHARACTERS[infiltratorType]` 和 `MONSTERS[normalizeGuardType(guard.type)]` 创建正式模型，并暴露 `data-infiltrator-type / data-guard-type` 供回归测试。开始页换人通过 `infiltratorSwapRef` 只替换玩家 Group、骨骼和克隆材质，HUD/结算回调通过 ref 取最新函数，避免回调身份变化重建整个地牢；14 次连续热切换实测复用同一 Canvas，平均 142 ms。建造页守卫选择会立即更新已放置守卫；默认按建造序号循环六种怪物，第七座才重复。六种守卫共享判定数值，五种有腿怪使用 `userData.rig` 步态，幽灵保持原生漂浮滑行。
 - 3D 配置渲染：场景按地牢墙/机关集合创建模型；守卫在首尾巡逻点间插值，模型面部、移动、逻辑检测和视线锥统一使用本地 `+Z`，射线检测墙体后才判定暴露；移动和冲刺均检查配置中的墙体。
 - 镜头与灯光：每局先进入 `introPending → intro → normal`，首帧着色器预热结束后再启动 1,600 ms 环绕，期间冻结计时与输入；`wallReveals` 为每个障碍保存底部锚定 Group、错峰进度和落尘触发位，使用一次 ease-out-back 从 `scale.y 0.02` 生长到 1；`propReveals` 包装尖刺、符文和宝物，以独立错峰从 `scale 0.05 / rotation.z -π/2` 翻转到稳定姿态并触发语义色尘屑。常规阶段以 110 ms 时间常数跟随玩家，焦点取玩家 x 的 78% 与 z 的 72%。主方向光、轮廓光和玩家冷青重点光同步移动；重点光强度 5.2、距离 8.0、衰减 1.4，半球环境光 0.62。双指距离控制 `userZoom` 0.72–1.55，松手后保持。
 - 相机触控：第一根手指只压亮候选格，`pointerup` 且位移小于 10 px 才移动；第二根手指落下立即取消候选并进入 pinch，避免缩放时误走。缩放值在死亡/复活演出结束后恢复，桌面键盘路径不受影响。
@@ -50,7 +53,9 @@
 
 - 改预算、地图尺寸或固定入口：修改 `dungeons.ts`，同步编辑器 CSS 网格与 `requirements.md` 数值。
 - 加机关：扩展 `TrapType`、Builder 工具、MiniMap 语义样式，并在 `DungeonScene.tsx` 添加模型和抵达判定。
-- 加守卫类型/复杂巡逻：扩展 `GuardSpec` 与怪物构造器，把 Builder 的两点自动路线升级为 2–6 点路线编辑。
+- 加守卫类型/复杂巡逻：先在 `types.ts` 与 `roster.ts` 注册类型和 i18n 名称，再接入 `MONSTERS` 工厂；把 Builder 的两点自动路线升级为多点时，必须同步扩展 `guardRouteIsValid()` 和真实场景巡逻插值，不能只改 schema。
+- 改地图公平性：修改 `dungeons.ts` 的 `solveMission()` 必经伤害模型与 `validateDungeon()` 结构门禁，同步 Builder 文案、社区过滤、需求数值和封路/致死/异常路线回归，禁止只在按钮 disabled 上做表面校验。
+- 改潜入者或守卫选择：修改 `roster.ts` 名册与名称映射、`i18n/index.ts` 文案以及对应模型工厂；开始页选择持久化位于 `DungeonShift.tsx`，守卫实时预览位于 `GuardPreview.tsx`。
 - 改潜入数值、计分和反馈：修改 `DungeonScene.tsx` 的状态与结算公式，并同步需求和音效文档。
 - 改入场、跟随、死亡或复活镜头：修改 `DungeonScene.tsx` 的 `cameraTransition`、`userZoom`、持续时间与正交 `camera.zoom`；同步 `requirements.md`、`visual.md`，并重跑 camera/pinch 与 death-video 浏览器回归。
 - 改撤离提示：修改 `DungeonShift.tsx` 的 `.ds-objective.is-extract` 结构、i18n 的 `extractTitle/extractHint` 和 `DungeonShift.less` 的短屏定位；复验 360×640 时任务条与技能区至少留 8 px 间距。

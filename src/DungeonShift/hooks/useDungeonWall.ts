@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { callAigramAPI, isInAigram, type AigramResponse } from '@shared/runtime/bridge';
 import { getGameUuid } from '@shared/runtime/game-id';
 import type { DungeonSave, WallEntry } from '../types';
+import { normalizeDungeon, validateDungeon } from '../dungeons';
 
 interface SaveRow { user_id: string; resource_data?: string }
 
@@ -26,8 +27,9 @@ export function useDungeonWall() {
           if (!row.user_id || !row.resource_data) continue;
           try {
             const save = JSON.parse(row.resource_data) as DungeonSave;
-            for (const dungeon of save.dungeons || []) {
-              if (dungeon?.id && dungeon.version === 1) pairs.push({ userId: String(row.user_id), dungeon });
+            for (const rawDungeon of save.dungeons || []) {
+              const dungeon = normalizeDungeon(rawDungeon);
+              if (dungeon && validateDungeon(dungeon).code === 'ready') pairs.push({ userId: String(row.user_id), dungeon });
             }
           } catch { /* skip malformed saves */ }
         }

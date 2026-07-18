@@ -3,6 +3,8 @@ export type Phase = 'start' | 'builder' | 'archive' | 'playing' | 'won' | 'lost'
 export interface Cell { c: number; r: number }
 export type TrapType = 'spike' | 'rune';
 export type BuilderTool = 'wall' | TrapType | 'guard' | 'erase';
+export type InfiltratorType = 'shopkeeper' | 'granny' | 'oldman' | 'blonde' | 'kid' | 'businessman' | 'officeWoman' | 'student' | 'darkWoman' | 'worker' | 'teen' | 'fitWoman' | 'chef' | 'bigGuy';
+export type GuardType = 'vampire' | 'werewolf' | 'zombie' | 'ghost' | 'skeleton' | 'mummy';
 
 export interface TrapSpec {
   id: string;
@@ -12,7 +14,7 @@ export interface TrapSpec {
 
 export interface GuardSpec {
   id: string;
-  type: 'vampire';
+  type: GuardType;
   route: Cell[];
 }
 
@@ -31,6 +33,7 @@ export interface DungeonSave {
   dungeons: DungeonConfig[];
   totalBuilds: number;
   bestScore: number;
+  infiltrator?: InfiltratorType;
   _lastActive?: number;
 }
 

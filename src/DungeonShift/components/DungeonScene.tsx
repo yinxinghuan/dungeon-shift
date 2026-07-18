@@ -6,16 +6,18 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { BASE_CHARACTERS } from '../engine/characters-base.js';
-import { vampire } from '../engine/monsters.js';
+import { MONSTERS } from '../engine/monsters.js';
 import { createParticles } from '../engine/particles.js';
 import { sfx } from '../audio';
-import type { DungeonConfig, DungeonSceneHandle, HudState, RunResult } from '../types';
+import { normalizeGuardType } from '../roster';
+import type { DungeonConfig, DungeonSceneHandle, HudState, InfiltratorType, RunResult } from '../types';
 import { COLS, ROWS, SAMPLE_DUNGEON, START, VAULT } from '../dungeons';
 
 interface Props {
   active: boolean;
   runId: number;
   dungeon?: DungeonConfig;
+  infiltratorType: InfiltratorType;
   onHud: (state: HudState) => void;
   onFinish: (result: RunResult) => void;
 }
@@ -49,9 +51,14 @@ function visionGeometry(length = 3.45, half = 0.72) {
   return geo;
 }
 
-const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene({ active, runId, dungeon = SAMPLE_DUNGEON, onHud, onFinish }, ref) {
+const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene({ active, runId, dungeon = SAMPLE_DUNGEON, infiltratorType, onHud, onFinish }, ref) {
   const mountRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef({ useSmoke: () => {}, armDash: () => {} });
+  const infiltratorSwapRef = useRef<(type: InfiltratorType) => void>(() => {});
+  const onHudRef = useRef(onHud);
+  const onFinishRef = useRef(onFinish);
+  onHudRef.current = onHud;
+  onFinishRef.current = onFinish;
 
   useImperativeHandle(ref, () => ({
     useSmoke: () => actionsRef.current.useSmoke(),
@@ -65,6 +72,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const spikeKeys = new Set(dungeon.traps.filter((trap) => trap.type === 'spike').map((trap) => cellKey(trap.cell.c, trap.cell.r)));
     const runeKeys = new Set(dungeon.traps.filter((trap) => trap.type === 'rune').map((trap) => cellKey(trap.cell.c, trap.cell.r)));
     const guardRoute = dungeon.guards[0]?.route?.length >= 2 ? dungeon.guards[0].route : [{ c: 1, r: 3 }, { c: 3, r: 3 }];
+    const guardType = normalizeGuardType(dungeon.guards[0]?.type);
     const guardStart = guardRoute[0];
     const guardEnd = guardRoute[guardRoute.length - 1];
 
@@ -267,26 +275,46 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     propReveals.forEach((item, index) => { item.delay = 0.3 + (propReveals.length <= 1 ? 0 : index / (propReveals.length - 1)) * 0.38; });
 
     const playerRoot = new THREE.Group();
-    const playerModel = normalizeModel(BASE_CHARACTERS.teen(), 0.94);
-    const playerMaterialStates: Array<{ material: THREE.MeshStandardMaterial; color: number; emissive: number; emissiveIntensity: number }> = [];
-    playerModel.traverse((child) => {
+    let playerModel: THREE.Group | null = null;
+    let playerRig: Record<string, THREE.Group> | null = null;
+    let renderedInfiltrator = infiltratorType;
+    let playerMaterialStates: Array<{ material: THREE.MeshStandardMaterial; color: number; emissive: number; emissiveIntensity: number }> = [];
+    const disposePlayerModel = (model: THREE.Group | null) => model?.traverse((child) => {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh) return;
-      const source = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const cloned = source.map((material) => material.clone() as THREE.MeshStandardMaterial);
-      mesh.material = Array.isArray(mesh.material) ? cloned : cloned[0];
-      cloned.forEach((material) => {
-        playerMaterialStates.push({
-          material,
-          color: material.color.getHex(),
-          emissive: material.emissive.getHex(),
-          emissiveIntensity: material.emissiveIntensity,
+      mesh.geometry?.dispose();
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      materials.forEach((material) => material.dispose());
+    });
+    const installPlayerModel = (type: InfiltratorType) => {
+      if (playerModel && renderedInfiltrator === type) return;
+      if (playerModel) { playerRoot.remove(playerModel); disposePlayerModel(playerModel); }
+      playerMaterialStates = [];
+      playerModel = normalizeModel(BASE_CHARACTERS[type](), 0.94);
+      playerModel.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const source = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        const cloned = source.map((material) => material.clone() as THREE.MeshStandardMaterial);
+        mesh.material = Array.isArray(mesh.material) ? cloned : cloned[0];
+        cloned.forEach((material) => {
+          playerMaterialStates.push({
+            material,
+            color: material.color.getHex(),
+            emissive: material.emissive.getHex(),
+            emissiveIntensity: material.emissiveIntensity,
+          });
         });
       });
-    });
-    playerRoot.add(playerModel); playerRoot.position.copy(worldFor(START.c, START.r)); playerRoot.position.y = 0.33;
+      playerRoot.add(playerModel);
+      playerRig = playerModel.userData.rig || null;
+      renderedInfiltrator = type;
+      mount.dataset.infiltratorType = type;
+    };
+    installPlayerModel(infiltratorType);
+    infiltratorSwapRef.current = installPlayerModel;
+    playerRoot.position.copy(worldFor(START.c, START.r)); playerRoot.position.y = 0.33;
     playerRoot.rotation.y = Math.PI; scene.add(playerRoot);
-    const playerRig = playerModel.userData.rig;
     const playerMarker = new THREE.Mesh(
       new THREE.TorusGeometry(0.35, 0.035, 5, 24),
       new THREE.MeshBasicMaterial({ color: 0x8ae1d8, transparent: true, opacity: 0.86 }),
@@ -317,7 +345,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     }
 
     const guardRoot = new THREE.Group();
-    const guardModel = normalizeModel(vampire(), 1.03);
+    const guardModel = normalizeModel(MONSTERS[guardType](), 1.03);
     guardRoot.add(guardModel); guardRoot.position.copy(worldFor(guardStart.c, guardStart.r)); guardRoot.position.y = 0.33;
     scene.add(guardRoot);
     const guardRig = guardModel.userData.rig;
@@ -400,7 +428,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         dashArmed: state.dashArmed, alarms: state.alarms,
       };
     }
-    onHud(hudSnapshot());
+    onHudRef.current(hudSnapshot());
 
     function addRing(position: THREE.Vector3, color: number, duration = 0.7) {
       const mesh = new THREE.Mesh(
@@ -418,8 +446,8 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       const score = won ? Math.max(0, Math.round(2000 + state.timeLeft * 20 + state.health * 250 + (state.smokeReady ? 150 : 0) + (state.dashReady ? 150 : 0) - state.alarms * 180)) : 0;
       if (won) sfx.win(); else sfx.lose();
       const result = { ...hudSnapshot(), won, reason, score };
-      onHud(hudSnapshot());
-      finishRaf = requestAnimationFrame(() => onFinish(result));
+      onHudRef.current(hudSnapshot());
+      finishRaf = requestAnimationFrame(() => onFinishRef.current(result));
     }
 
     let deathBurstDone = false;
@@ -438,7 +466,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       setPlayerDeathTint(false);
       playerRoot.visible = true; state.invulnerableUntil = state.elapsed + 1.2;
       state.cameraTransition = 'revive'; state.cameraTransitionAt = performance.now(); state.cameraTransitionElapsed = 0;
-      mount.dataset.death = 'recovering'; addRing(playerRoot.position, 0x65e6ee, 0.52); onHud(hudSnapshot());
+      mount.dataset.death = 'recovering'; addRing(playerRoot.position, 0x65e6ee, 0.52); onHudRef.current(hudSnapshot());
       requestAnimationFrame(() => { if (mount.dataset.death === 'recovering') delete mount.dataset.death; });
     }
 
@@ -456,7 +484,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       setPlayerDeathTint(true);
       state.timeLeft = Math.max(1, state.timeLeft - 8); state.alert = 0; state.hasLoot = false;
       state.smokeReady = true; state.dashReady = true; state.smokeUntil = 0;
-      relic.visible = true; exitArrow.visible = false; mount.dataset.death = 'highlighted'; onHud(hudSnapshot());
+      relic.visible = true; exitArrow.visible = false; mount.dataset.death = 'highlighted'; onHudRef.current(hudSnapshot());
     }
 
     function hit(reason = 'guard') {
@@ -465,7 +493,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       state.freezeUntil = performance.now() + (reduceMotion ? 0 : 55);
       state.shakeUntil = performance.now() + (reduceMotion ? 0 : 140);
       if (state.health > 0) particles.burst(playerRoot.position.x, 0.7, playerRoot.position.z, 0xe36a58, { count: reduceMotion ? 5 : 10, speed: 2.3, up: 2.1, size: 0.09, life: 0.52, emissive: 0.25 });
-      sfx.hit(); onHud(hudSnapshot());
+      sfx.hit(); onHudRef.current(hudSnapshot());
       if (state.health <= 0) {
         mount.dataset.damageOutcome = 'lethal-cinematic';
         respawn();
@@ -483,7 +511,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       state.chaseUntil = state.elapsed + 2.5; state.freezeUntil = performance.now() + (reduceMotion ? 0 : 55);
       state.shakeUntil = performance.now() + (reduceMotion ? 0 : 140);
       particles.burst(guardRoot.position.x, 1.55, guardRoot.position.z, 0xe36a58, { count: reduceMotion ? 3 : 6, speed: 1.1, up: 1.6, size: 0.1, life: 0.5, emissive: 0.45 });
-      sfx.alert(); onHud(hudSnapshot());
+      sfx.alert(); onHudRef.current(hudSnapshot());
       if (state.alert >= 100) { state.timeLeft = Math.max(0, state.timeLeft - 12); state.alert = 55; }
     }
 
@@ -491,7 +519,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       if (state.hasLoot) return;
       state.hasLoot = true; relic.visible = false;
       particles.burst(relic.position.x, 0.85, relic.position.z, 0xe7b95c, { count: reduceMotion ? 12 : 24, speed: 3.2, up: 3.2, size: 0.12, life: 0.7, emissive: 0.65 });
-      addRing(relic.position, 0xffe2a0, 0.7); sfx.loot(); onHud(hudSnapshot());
+      addRing(relic.position, 0xffe2a0, 0.7); sfx.loot(); onHudRef.current(hudSnapshot());
       state.chaseUntil = state.elapsed + 3.5;
       entranceRing.scale.setScalar(1.34);
     }
@@ -519,18 +547,18 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       state.from = { ...state.current }; state.target = target; state.moving = true; state.moveT = 0;
       state.moveDuration = (Math.abs(target.c - state.current.c) + Math.abs(target.r - state.current.r)) > 1 ? 0.26 : 0.22;
       playerRoot.rotation.y = Math.atan2(target.c - state.current.c, target.r - state.current.r);
-      sfx.move(); onHud(hudSnapshot());
+      sfx.move(); onHudRef.current(hudSnapshot());
     }
 
     actionsRef.current.useSmoke = () => {
       if (!active || !state.smokeReady || state.ended || state.respawning || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') return;
       state.smokeReady = false; state.smokeUntil = state.elapsed + 3;
       for (let i = 0; i < 3; i += 1) particles.puffFx(playerRoot.position.x, 0.45 + i * 0.12, playerRoot.position.z, { count: reduceMotion ? 3 : 6, color: 0xaaa59c, size: 0.22, life: 0.8, grav: 0.3 });
-      sfx.smoke(); onHud(hudSnapshot());
+      sfx.smoke(); onHudRef.current(hudSnapshot());
     };
     actionsRef.current.armDash = () => {
       if (!active || !state.dashReady || state.ended || state.respawning || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') return;
-      state.dashArmed = !state.dashArmed; onHud(hudSnapshot());
+      state.dashArmed = !state.dashArmed; onHudRef.current(hudSnapshot());
       addRing(playerRoot.position, 0x3fb6ac, 0.36);
     };
 
@@ -774,7 +802,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         }
         if (distance < 0.52 && state.elapsed > state.smokeUntil) hit('guard');
 
-        if (state.elapsed - state.lastHud > 0.1) { state.lastHud = state.elapsed; onHud(hudSnapshot()); }
+        if (state.elapsed - state.lastHud > 0.1) { state.lastHud = state.elapsed; onHudRef.current(hudSnapshot()); }
       } else {
         playerRoot.position.y = 0.33 + Math.sin(visualT * 2.2) * 0.025;
         const idleP = (Math.sin(visualT * 0.7) + 1) / 2;
@@ -901,6 +929,8 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       mount.dataset.guardPosition = `${guardRoot.position.x.toFixed(3)},${guardRoot.position.z.toFixed(3)}`;
       mount.dataset.readabilityMarkers = 'player,entrance,relic,guard,spike,rune,moves';
       mount.dataset.materialVocabulary = 'dark-reflective-wall,matte-stone-cap,metal-foundation,crystal';
+      mount.dataset.infiltratorType = renderedInfiltrator;
+      mount.dataset.guardType = guardType;
       composer.render();
       if (finishDeathTravel && state.cameraTransition === 'death') revealPlayerAtSpawn();
     }
@@ -932,10 +962,14 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       renderer.domElement.removeEventListener('pointercancel', endPointer);
       window.removeEventListener('keydown', onKeyDown);
       actionsRef.current = { useSmoke: () => {}, armDash: () => {} };
+      infiltratorSwapRef.current = () => {};
+      disposePlayerModel(playerModel);
       composer.dispose(); renderer.dispose();
       if (renderer.domElement.parentElement === mount) mount.removeChild(renderer.domElement);
     };
-  }, [active, runId, dungeon, onFinish, onHud]);
+  }, [active, runId, dungeon]);
+
+  useEffect(() => { infiltratorSwapRef.current(infiltratorType); }, [infiltratorType]);
 
   return <div className="ds-scene" ref={mountRef} aria-label="3D dungeon playfield" />;
 });
