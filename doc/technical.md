@@ -33,9 +33,9 @@
 - 3D 配置渲染：场景按地牢墙/机关集合创建模型；守卫在首尾巡逻点间插值，模型面部、移动、逻辑检测和视线锥统一使用本地 `+Z`，射线检测墙体后才判定暴露；移动和冲刺均检查配置中的墙体。
 - 镜头与灯光：每局先进入 `introPending → intro → normal`，首帧着色器预热结束后再启动 1,600 ms 环绕，期间冻结计时与输入；`wallReveals` 为每个障碍保存底部锚定 Group、错峰进度和落尘触发位，使用一次 ease-out-back 从 `scale.y 0.02` 生长到 1；`propReveals` 包装尖刺、符文和宝物，以独立错峰从 `scale 0.05 / rotation.z -π/2` 翻转到稳定姿态并触发语义色尘屑。常规阶段以 110 ms 时间常数跟随玩家，焦点取玩家 x 的 78% 与 z 的 72%。主方向光、轮廓光和玩家冷青重点光同步移动；重点光强度 5.2、距离 8.0、衰减 1.4，半球环境光 0.62。双指距离控制 `userZoom` 0.72–1.55，松手后保持。
 - 相机触控：第一根手指只压亮候选格，`pointerup` 且位移小于 10 px 才移动；第二根手指落下立即取消候选并进入 pinch，避免缩放时误走。缩放值在死亡/复活演出结束后恢复，桌面键盘路径不受影响。
-- 材质分层：道路、墙身和障碍顶盖保留高粗糙度石材；每个障碍朝镜头的 `+Z / +X` 两侧复用地基护轨的冷灰 clearcoat 金属并分别叠加窄高光；尖刺使用更高金属度 `MeshPhysicalMaterial`；符文晶体使用低粗糙度、`transmission: 0.22`、`ior: 1.45` 的透光材质。材质变化不改变墙体碰撞与视线遮挡。
+- 材质分层：道路保留高粗糙度石材；障碍物整块墙身和顶盖与地基护轨共用深黑冷灰 `MeshPhysicalMaterial`（`0x272d31`、roughness 0.22、metalness 0.72、clearcoat 0.92），模型不再生成侧面贴片、玻璃片或白色高光条；尖刺使用更高金属度材质，符文晶体使用低粗糙度、`transmission: 0.22`、`ior: 1.45` 的透光材质。材质变化不改变墙体碰撞与视线遮挡。
 - 机制识别：相邻可走格使用运行时 `LineLoop` 方框；玩家、入口、宝物、守卫、尖刺和符文分别使用独立的脚环/菱形、四角柱、竖直信标、红环/感叹号、底板/高锥体、方环/悬浮晶体，颜色之外保留轮廓与高度差异。
-- 生命与复活：普通受击扣 1 点生命；携宝受击不再瞬移入口。生命归零后世界和角色完整定格 300 ms，再用 550 ms 从玩家缩放推进至至少 1.85 倍；第 850 ms 才隐藏角色并爆出 14 个体素、启动 700 ms 红黑闸门。第 1,550 ms 回到入口，恢复生命/技能、返还宝物并扣 8 秒；镜头随后用 900 ms 拉回玩家缩放。倒计时归零才进入失败结算。
+- 生命与复活：普通受击扣 1 点生命；携宝受击不再瞬移入口。生命归零后仅锁定玩家输入、移动与骨骼姿态，并把玩家独立克隆的材质切为高亮红色；守卫巡逻、陷阱、粒子和灯光继续更新。镜头先保持 420 ms，再用 880 ms 旋转推进至至少 2.0 倍；到位后才隐藏玩家并爆出 14 个体素、启动 700 ms 红黑闸门。随后镜头用 900 ms 将 `cameraFocus` 从死亡点插值到入口；玩家恢复原材质、在入口以尺度回弹出现，镜头再用 1,100 ms 旋转拉远并解锁输入。死亡、迁移和复活动画使用 `cameraTransitionElapsed += min(rawDt, 0.05) × 1000` 按渲染帧推进，不使用独立复活 `setTimeout`，避免低帧率越级；演出期间倒计时暂停但环境仍更新。
 - 通关结算：夺宝后 React HUD 在 100 ms 内把顶部普通说明替换为技能区上方的青色撤离任务条（17 px 主标题、13 px 辅助文字、入口 SVG），同时增强入口灯池并显示附着于玩家的青色出口箭头；主动进入入口后在下一动画帧触发结算。
 - 存档镜像：`useGameSave.savedData` 只负责首次种子；`saveMirror` 是后续唯一读源，每次发布保留完整对象并将个人地牢限制为最近 12 份。
 - 社区墙：网络层对每个 save 写 `for (const dungeon of save.dungeons || [])`；UI 把 `mine` 与社区结果合并，按 `dungeon.id` 去重，再按时间排序。发布后立即可见，不等待约 1 秒的云同步。
@@ -54,7 +54,7 @@
 - 改潜入数值、计分和反馈：修改 `DungeonScene.tsx` 的状态与结算公式，并同步需求和音效文档。
 - 改入场、跟随、死亡或复活镜头：修改 `DungeonScene.tsx` 的 `cameraTransition`、`userZoom`、持续时间与正交 `camera.zoom`；同步 `requirements.md`、`visual.md`，并重跑 camera/pinch 与 death-video 浏览器回归。
 - 改撤离提示：修改 `DungeonShift.tsx` 的 `.ds-objective.is-extract` 结构、i18n 的 `extractTitle/extractHint` 和 `DungeonShift.less` 的短屏定位；复验 360×640 时任务条与技能区至少留 8 px 间距。
-- 改反光金属材质：修改 `DungeonScene.tsx` 的 `perimeterMat`、`wallCapMaterial`、`spikeMat` 与 `runeCrystal`；障碍侧板与地基护轨共用 `perimeterMat`，必须同时检查轮廓识别、Bloom 过曝和低端移动设备帧率。
+- 改反光金属材质：修改 `DungeonScene.tsx` 的 `perimeterMat`、`spikeMat` 与 `runeCrystal`；障碍整块墙身、顶盖与地基护轨共用 `perimeterMat`，禁止重新添加侧板或高光贴条，并同时检查黑色体块轮廓、Bloom 过曝和低端移动设备帧率。
 - 改墙/档案策略：个人输入上限在 `publishDungeon`，展示上限和跨用户解析在 `useDungeonWall.ts`；不得在网络层只取数组首项。
 - 换 UI/字体/颜色：修改 `DungeonShift.less`、`main.tsx` 的 Fontsource 入口、`icons.tsx` 与 `doc/visual.md`；继续保持像素 UI / 清晰 3D 的边界、硬角图标、语义颜色和 44 px 目标。
 - 改平台能力：只使用 `src/shared` 标准模块；事件文案在 `DungeonShift.tsx`，永久 UUID 以 `games/games.json` 为唯一来源。

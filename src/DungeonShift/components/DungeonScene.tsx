@@ -149,9 +149,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     }
 
     const wallGeo = new THREE.BoxGeometry(1.03, 0.8, 1.03);
-    const perimeterMat = new THREE.MeshPhysicalMaterial({ color: 0x59636a, roughness: 0.24, metalness: 0.68, clearcoat: 0.92, clearcoatRoughness: 0.08 });
-    const glassGlintMaterial = new THREE.MeshBasicMaterial({ color: 0xd5ffff, transparent: true, opacity: 0.48, depthWrite: false });
-    const wallCapMaterial = new THREE.MeshStandardMaterial({ color: 0xb9b1a5, roughness: 0.78, metalness: 0.06 });
+    const perimeterMat = new THREE.MeshPhysicalMaterial({ color: 0x272d31, roughness: 0.22, metalness: 0.72, clearcoat: 0.92, clearcoatRoughness: 0.08 });
     const wallReveals: Array<{ root: THREE.Group; delay: number; revealed: boolean }> = [];
     const propReveals: Array<{ root: THREE.Group; delay: number; color: number; revealed: boolean }> = [];
     let wallRevealIndex = 0;
@@ -160,20 +158,12 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       const wallRoot = new THREE.Group();
       wallRoot.position.copy(worldFor(c, r)); wallRoot.position.y = 0.11;
       if (active) wallRoot.scale.set(0.9, 0.02, 0.9);
-      const wall = new THREE.Mesh(wallGeo, edgeMat.clone());
+      const wall = new THREE.Mesh(wallGeo, perimeterMat);
       wall.position.y = 0.4;
       wall.castShadow = wall.receiveShadow = true;
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.08, 0.82), wallCapMaterial);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.08, 0.82), perimeterMat);
       cap.position.y = 0.44;
-      const frontMetal = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.44, 0.035), perimeterMat);
-      frontMetal.position.set(0, 0.04, 0.53);
-      const frontGlint = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.34, 0.012), glassGlintMaterial);
-      frontGlint.position.set(-0.18, 0.01, 0.024); frontGlint.rotation.z = -0.24; frontMetal.add(frontGlint);
-      const rightMetal = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.44, 0.8), perimeterMat);
-      rightMetal.position.set(0.53, 0.04, 0);
-      const rightGlint = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.34, 0.1), glassGlintMaterial);
-      rightGlint.position.set(0.024, 0.01, -0.18); rightGlint.rotation.x = 0.24; rightMetal.add(rightGlint);
-      wall.add(cap, frontMetal, rightMetal); wallRoot.add(wall); scene.add(wallRoot); visionBlockers.push(wall);
+      wall.add(cap); wallRoot.add(wall); scene.add(wallRoot); visionBlockers.push(wall);
       wallReveals.push({ root: wallRoot, delay: 0.08 + wallRevealIndex * 0.065, revealed: !active });
       wallRevealIndex += 1;
     }
@@ -277,6 +267,22 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
 
     const playerRoot = new THREE.Group();
     const playerModel = normalizeModel(BASE_CHARACTERS.teen(), 0.94);
+    const playerMaterialStates: Array<{ material: THREE.MeshStandardMaterial; color: number; emissive: number; emissiveIntensity: number }> = [];
+    playerModel.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const source = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const cloned = source.map((material) => material.clone() as THREE.MeshStandardMaterial);
+      mesh.material = Array.isArray(mesh.material) ? cloned : cloned[0];
+      cloned.forEach((material) => {
+        playerMaterialStates.push({
+          material,
+          color: material.color.getHex(),
+          emissive: material.emissive.getHex(),
+          emissiveIntensity: material.emissiveIntensity,
+        });
+      });
+    });
     playerRoot.add(playerModel); playerRoot.position.copy(worldFor(START.c, START.r)); playerRoot.position.y = 0.33;
     playerRoot.rotation.y = Math.PI; scene.add(playerRoot);
     const playerRig = playerModel.userData.rig;
@@ -296,6 +302,18 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     );
     playerBeacon.position.y = 1.38; playerBeacon.renderOrder = 8;
     playerRoot.add(playerBeacon);
+    function setPlayerDeathTint(enabled: boolean) {
+      playerMaterialStates.forEach(({ material, color, emissive, emissiveIntensity }) => {
+        material.color.setHex(enabled ? 0xff3b30 : color);
+        material.emissive.setHex(enabled ? 0xff170f : emissive);
+        material.emissiveIntensity = enabled ? 1.18 : emissiveIntensity;
+      });
+      (playerMarker.material as THREE.MeshBasicMaterial).color.setHex(enabled ? 0xff655d : 0x8ae1d8);
+      (playerBeacon.material as THREE.MeshBasicMaterial).color.setHex(enabled ? 0xff4a3f : 0x83e2ee);
+      playerFocusLight.color.setHex(enabled ? 0xff3029 : 0x8eeaf2);
+      playerFocusLight.intensity = enabled ? 8.2 : 5.2;
+      mount.dataset.playerTint = enabled ? 'warning-red' : 'normal';
+    }
 
     const guardRoot = new THREE.Group();
     const guardModel = normalizeModel(vampire(), 1.03);
@@ -352,7 +370,14 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const baseRim = rim.position.clone();
     const cameraFocus = new THREE.Vector3(0, 0.1, 0);
     const cameraGoal = new THREE.Vector3();
+    const deathHoldFocus = new THREE.Vector3();
+    const deathSubjectFocus = new THREE.Vector3();
+    const spawnFocus = worldFor(START.c, START.r).multiply(new THREE.Vector3(0.78, 0, 0.72));
+    spawnFocus.y = 0.1;
     const lightOffset = new THREE.Vector3();
+    const deathTiming = reduceMotion
+      ? { hold: 140, push: 280, travel: 320, pullout: 400 }
+      : { hold: 420, push: 880, travel: 900, pullout: 1100 };
     const state = {
       health: 3, alert: 0, hasLoot: false, smokeReady: true, dashReady: true, dashArmed: false,
       smokeUntil: 0, alarms: 0, timeLeft: 75, elapsed: 0, moving: false, moveT: 0,
@@ -360,7 +385,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       guardProgress: 0, guardDir: 1, guardPause: 0.5, sightTime: 0, chaseUntil: 0,
       invulnerableUntil: 0, usedRunes: new Set<string>(), ended: false, freezeUntil: 0, shakeUntil: 0,
       respawning: false, cameraTransition: (active ? 'introPending' : 'normal') as 'normal' | 'introPending' | 'intro' | 'death' | 'revive', cameraTransitionAt: 0,
-      userZoom: 1, deathStartZoom: 1, deathPeakZoom: 1.85, deathVisualT: 0,
+      cameraTransitionElapsed: 0, userZoom: 1, deathStartZoom: 1, deathPeakZoom: 2.0,
       lastHud: 0, selectedTile: null as THREE.Mesh | null,
     };
     mount.dataset.effectActive = active ? 'true' : 'false';
@@ -395,33 +420,41 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       finishRaf = requestAnimationFrame(() => onFinish(result));
     }
 
-    let deathBurstTimer = 0;
-    let respawnTimer = 0;
+    let deathBurstDone = false;
+    function burstPlayer() {
+      if (deathBurstDone) return;
+      deathBurstDone = true;
+      playerRoot.visible = false; mount.dataset.death = 'burst';
+      particles.burst(playerRoot.position.x, 0.7, playerRoot.position.z, 0xeb7464, { count: reduceMotion ? 8 : 14, speed: 3.5, up: 3.0, size: 0.15, life: 0.65, emissive: 0.62 });
+      sfx.lose();
+    }
+
+    function revealPlayerAtSpawn() {
+      state.health = 3; state.current = { ...START }; state.target = { ...START }; state.from = { ...START };
+      playerRoot.position.copy(worldFor(START.c, START.r)); playerRoot.position.y = 0.33;
+      playerRoot.scale.setScalar(reduceMotion ? 1 : 0.08);
+      setPlayerDeathTint(false);
+      playerRoot.visible = true; state.invulnerableUntil = state.elapsed + 1.2;
+      state.cameraTransition = 'revive'; state.cameraTransitionAt = performance.now(); state.cameraTransitionElapsed = 0;
+      mount.dataset.death = 'recovering'; addRing(playerRoot.position, 0x65e6ee, 0.52); onHud(hudSnapshot());
+      requestAnimationFrame(() => { if (mount.dataset.death === 'recovering') delete mount.dataset.death; });
+    }
+
     function respawn() {
       if (state.respawning || state.ended) return;
       state.respawning = true; state.moving = false; state.dashArmed = false;
-      state.freezeUntil = performance.now() + (reduceMotion ? 660 : 1550);
-      state.shakeUntil = performance.now() + (reduceMotion ? 0 : 90);
-      state.cameraTransition = 'death'; state.cameraTransitionAt = performance.now();
-      state.deathVisualT = clock.elapsedTime;
+      state.freezeUntil = performance.now();
+      state.shakeUntil = performance.now();
+      state.cameraTransition = 'death'; state.cameraTransitionAt = performance.now(); state.cameraTransitionElapsed = 0;
+      deathBurstDone = false;
       state.deathStartZoom = state.userZoom;
-      state.deathPeakZoom = Math.min(2.25, Math.max(1.85, state.userZoom + 0.68));
+      state.deathPeakZoom = Math.min(2.4, Math.max(2.0, state.userZoom + 0.84));
+      deathHoldFocus.copy(cameraFocus);
+      deathSubjectFocus.set(playerRoot.position.x * 0.78, 0.1, playerRoot.position.z * 0.72);
+      setPlayerDeathTint(true);
       state.timeLeft = Math.max(1, state.timeLeft - 8); state.alert = 0; state.hasLoot = false;
       state.smokeReady = true; state.dashReady = true; state.smokeUntil = 0;
-      relic.visible = true; exitArrow.visible = false; mount.dataset.death = 'locked'; onHud(hudSnapshot());
-      deathBurstTimer = window.setTimeout(() => {
-        playerRoot.visible = false; mount.dataset.death = 'burst';
-        particles.burst(playerRoot.position.x, 0.7, playerRoot.position.z, 0xeb7464, { count: reduceMotion ? 8 : 14, speed: 3.5, up: 3.0, size: 0.15, life: 0.65, emissive: 0.62 });
-        sfx.lose();
-      }, reduceMotion ? 360 : 850);
-      respawnTimer = window.setTimeout(() => {
-        state.health = 3; state.current = { ...START }; state.target = { ...START }; state.from = { ...START };
-        playerRoot.position.copy(worldFor(START.c, START.r)); playerRoot.position.y = 0.33;
-        playerRoot.visible = true; state.respawning = false; state.invulnerableUntil = state.elapsed + 1.2;
-        state.cameraTransition = 'revive'; state.cameraTransitionAt = performance.now();
-        mount.dataset.death = 'recovering'; addRing(playerRoot.position, 0x65e6ee, 0.52); onHud(hudSnapshot());
-        requestAnimationFrame(() => { if (mount.dataset.death === 'recovering') delete mount.dataset.death; });
-      }, reduceMotion ? 660 : 1550);
+      relic.visible = true; exitArrow.visible = false; mount.dataset.death = 'highlighted'; onHud(hudSnapshot());
     }
 
     function hit(reason = 'guard') {
@@ -584,12 +617,13 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       raf = requestAnimationFrame(animate);
       const rawDt = Math.min(clock.getDelta(), 0.05);
       const now = performance.now();
+      if (state.cameraTransition === 'death' || state.cameraTransition === 'revive') state.cameraTransitionElapsed += rawDt * 1000;
+      if (state.cameraTransition === 'death' && state.cameraTransitionElapsed >= deathTiming.hold + deathTiming.push) burstPlayer();
       const frozen = active && now < state.freezeUntil;
       const dt = frozen || (active && (state.cameraTransition === 'intro' || state.cameraTransition === 'introPending')) ? 0 : rawDt;
       const t = clock.elapsedTime;
-      const cinematicLocked = state.respawning && state.cameraTransition === 'death' && mount.dataset.death === 'locked';
-      const ambientDt = cinematicLocked ? 0 : rawDt;
-      const visualT = cinematicLocked ? state.deathVisualT : t;
+      const ambientDt = rawDt;
+      const visualT = t;
 
       let revealedWalls = 0;
       let revealedProps = 0;
@@ -667,8 +701,10 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       mount.dataset.moveTargets = String(visibleMoveTargets);
 
       if (active && !state.ended) {
-        state.elapsed += dt; state.timeLeft -= dt; state.alert = Math.max(0, state.alert - dt * 8);
-        if (state.timeLeft <= 0) finish(false, 'timeout');
+        state.elapsed += dt;
+        if (!state.respawning) state.timeLeft -= dt;
+        state.alert = Math.max(0, state.alert - dt * 8);
+        if (!state.respawning && state.timeLeft <= 0) finish(false, 'timeout');
 
         if (state.moving) {
           state.moveT += dt / state.moveDuration;
@@ -704,7 +740,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         guardRoot.rotation.y = Math.atan2(patrolDx, patrolDz);
         guardLight.intensity = state.elapsed < state.chaseUntil ? 2.4 : 0.8 + Math.sin(visualT * 2.6) * 0.12;
         if (guardRig) {
-          const gait = cinematicLocked || state.guardPause > 0 ? 0 : Math.sin(visualT * (state.elapsed < state.chaseUntil ? 10 : 7)) * 0.58;
+          const gait = state.guardPause > 0 ? 0 : Math.sin(visualT * (state.elapsed < state.chaseUntil ? 10 : 7)) * 0.58;
           guardRig.legL.rotation.x = gait; guardRig.legR.rotation.x = -gait;
           guardRig.armL.rotation.x = -gait * 0.55; guardRig.armR.rotation.x = gait * 0.55;
         }
@@ -748,6 +784,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       particles.updateParticles(rawDt);
 
       let orbitAngle = 0;
+      let finishDeathTravel = false;
       if (state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') {
         const duration = reduceMotion ? 240 : 1600;
         const p = state.cameraTransition === 'introPending' ? 0 : Math.min(1, (now - state.cameraTransitionAt) / duration);
@@ -756,10 +793,55 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         orbitAngle = (1 - eased) * 0.38;
         camera.zoom = THREE.MathUtils.lerp(0.72, state.userZoom, eased);
         if (p >= 1) state.cameraTransition = 'normal';
+      } else if (state.cameraTransition === 'death') {
+        const age = state.cameraTransitionElapsed;
+        const pushStart = deathTiming.hold;
+        const travelStart = pushStart + deathTiming.push;
+        if (age < pushStart) {
+          cameraFocus.copy(deathHoldFocus);
+          camera.zoom = state.deathStartZoom;
+          mount.dataset.deathCameraPhase = 'character-highlight';
+        } else if (age < travelStart) {
+          const p = THREE.MathUtils.clamp((age - pushStart) / deathTiming.push, 0, 1);
+          const eased = p * p * (3 - 2 * p);
+          cameraFocus.lerpVectors(deathHoldFocus, deathSubjectFocus, eased);
+          orbitAngle = THREE.MathUtils.lerp(0, -0.38, eased);
+          camera.zoom = THREE.MathUtils.lerp(state.deathStartZoom, state.deathPeakZoom, eased);
+          mount.dataset.deathCameraPhase = 'push-orbit';
+        } else {
+          const p = THREE.MathUtils.clamp((age - travelStart) / deathTiming.travel, 0, 1);
+          const eased = p * p * (3 - 2 * p);
+          cameraFocus.lerpVectors(deathSubjectFocus, spawnFocus, eased);
+          orbitAngle = THREE.MathUtils.lerp(-0.38, 0.28, eased);
+          camera.zoom = state.deathPeakZoom;
+          mount.dataset.deathCameraPhase = 'travel-to-spawn';
+          finishDeathTravel = p >= 1;
+        }
+      } else if (state.cameraTransition === 'revive') {
+        const p = Math.min(1, state.cameraTransitionElapsed / deathTiming.pullout);
+        const eased = p * p * (3 - 2 * p);
+        cameraFocus.copy(spawnFocus);
+        orbitAngle = THREE.MathUtils.lerp(0.28, 0, eased);
+        camera.zoom = THREE.MathUtils.lerp(state.deathPeakZoom, state.userZoom, eased);
+        if (!reduceMotion) {
+          const appearP = THREE.MathUtils.clamp(p / 0.38, 0, 1);
+          const overshoot = 1.12;
+          const c3 = overshoot + 1;
+          const appearScale = 1 + c3 * Math.pow(appearP - 1, 3) + overshoot * Math.pow(appearP - 1, 2);
+          playerRoot.scale.setScalar(Math.max(0.08, appearScale));
+        }
+        mount.dataset.deathCameraPhase = p < 0.38 ? 'respawn-appear' : p < 1 ? 'rotate-pullout' : 'settled';
+        if (p >= 1) {
+          playerRoot.scale.setScalar(1);
+          state.respawning = false;
+          state.invulnerableUntil = state.elapsed + 1.2;
+          state.cameraTransition = 'normal';
+        }
       } else {
         cameraGoal.set(playerRoot.position.x * 0.78, 0.1, playerRoot.position.z * 0.72);
-        const focusTime = state.cameraTransition === 'death' ? 0.065 : state.cameraTransition === 'revive' ? 0.14 : 0.11;
-        cameraFocus.lerp(cameraGoal, 1 - Math.exp(-rawDt / focusTime));
+        cameraFocus.lerp(cameraGoal, 1 - Math.exp(-rawDt / 0.11));
+        camera.zoom = state.userZoom;
+        mount.dataset.deathCameraPhase = 'idle';
       }
       const orbitCos = Math.cos(orbitAngle), orbitSin = Math.sin(orbitAngle);
       camera.position.set(
@@ -767,25 +849,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         baseCamera.y,
         baseCamera.x * orbitSin + baseCamera.z * orbitCos + cameraFocus.z,
       );
-      if (now < state.shakeUntil) { camera.position.x += (Math.random() - 0.5) * 0.06; camera.position.y += (Math.random() - 0.5) * 0.04; }
-      if (state.cameraTransition === 'death') {
-        const hold = reduceMotion ? 120 : 300;
-        const duration = reduceMotion ? 240 : 550;
-        const age = now - state.cameraTransitionAt;
-        const p = THREE.MathUtils.clamp((age - hold) / duration, 0, 1);
-        const eased = p * p * (3 - 2 * p);
-        camera.zoom = THREE.MathUtils.lerp(state.deathStartZoom, state.deathPeakZoom, eased);
-        mount.dataset.deathCameraPhase = age < hold ? 'hold' : p < 1 ? 'push' : 'locked';
-      } else if (state.cameraTransition === 'revive') {
-        const duration = reduceMotion ? 300 : 900;
-        const p = Math.min(1, (now - state.cameraTransitionAt) / duration);
-        const eased = p * p * (3 - 2 * p);
-        camera.zoom = THREE.MathUtils.lerp(state.deathPeakZoom, state.userZoom, eased);
-        mount.dataset.deathCameraPhase = p < 1 ? 'pullout' : 'settled';
-        if (p >= 1) state.cameraTransition = 'normal';
-      } else if (state.cameraTransition !== 'intro' && state.cameraTransition !== 'introPending') {
-        camera.zoom = state.userZoom; mount.dataset.deathCameraPhase = 'idle';
-      }
+      if (now < state.shakeUntil && state.cameraTransition === 'normal') { camera.position.x += (Math.random() - 0.5) * 0.06; camera.position.y += (Math.random() - 0.5) * 0.04; }
       camera.updateProjectionMatrix();
       camera.lookAt(cameraFocus.x, cameraFocus.y, cameraFocus.z);
       key.position.copy(baseKey).add(lightOffset.set(playerRoot.position.x, 0, playerRoot.position.z));
@@ -809,16 +873,23 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       mount.dataset.respawning = state.respawning ? 'true' : 'false';
       mount.dataset.cameraTransition = state.cameraTransition;
       mount.dataset.cameraZoom = camera.zoom.toFixed(3);
+      mount.dataset.cameraOrbit = orbitAngle.toFixed(3);
       mount.dataset.userZoom = state.userZoom.toFixed(3);
       playerFocusLight.getWorldPosition(lightOffset);
       mount.dataset.playerLightPosition = `${lightOffset.x.toFixed(3)},${lightOffset.z.toFixed(3)}`;
       mount.dataset.playerLightIntensity = playerFocusLight.intensity.toFixed(1);
-      mount.dataset.cameraTransitionAge = String(Math.round(now - state.cameraTransitionAt));
+      mount.dataset.cameraTransitionAge = String(Math.round(
+        state.cameraTransition === 'death' || state.cameraTransition === 'revive'
+          ? state.cameraTransitionElapsed
+          : now - state.cameraTransitionAt,
+      ));
       mount.dataset.cameraFocus = `${cameraFocus.x.toFixed(3)},${cameraFocus.z.toFixed(3)}`;
       mount.dataset.guardForward = `${new THREE.Vector3(0, 0, 1).applyQuaternion(guardRoot.quaternion).x.toFixed(3)},${new THREE.Vector3(0, 0, 1).applyQuaternion(guardRoot.quaternion).z.toFixed(3)}`;
+      mount.dataset.guardPosition = `${guardRoot.position.x.toFixed(3)},${guardRoot.position.z.toFixed(3)}`;
       mount.dataset.readabilityMarkers = 'player,entrance,relic,guard,spike,rune,moves';
-      mount.dataset.materialVocabulary = 'stone,reflective-metal-side,metal-rail,crystal';
+      mount.dataset.materialVocabulary = 'dark-reflective-wall,metal-foundation,crystal';
       composer.render();
+      if (finishDeathTravel && state.cameraTransition === 'death') revealPlayerAtSpawn();
     }
     if (active) {
       const openingAngle = 0.38;
@@ -841,7 +912,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     animate();
 
     return () => {
-      cancelAnimationFrame(raf); cancelAnimationFrame(finishRaf); clearTimeout(introStartTimer); clearTimeout(deathBurstTimer); clearTimeout(respawnTimer); observer.disconnect();
+      cancelAnimationFrame(raf); cancelAnimationFrame(finishRaf); clearTimeout(introStartTimer); observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
       renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerup', endPointer);
