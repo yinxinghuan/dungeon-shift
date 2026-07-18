@@ -150,6 +150,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
 
     const wallGeo = new THREE.BoxGeometry(1.03, 0.8, 1.03);
     const perimeterMat = new THREE.MeshPhysicalMaterial({ color: 0x272d31, roughness: 0.22, metalness: 0.72, clearcoat: 0.92, clearcoatRoughness: 0.08 });
+    const wallCapMaterial = new THREE.MeshStandardMaterial({ color: 0xb9b1a5, roughness: 0.78, metalness: 0.06 });
     const wallReveals: Array<{ root: THREE.Group; delay: number; revealed: boolean }> = [];
     const propReveals: Array<{ root: THREE.Group; delay: number; color: number; revealed: boolean }> = [];
     let wallRevealIndex = 0;
@@ -161,7 +162,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       const wall = new THREE.Mesh(wallGeo, perimeterMat);
       wall.position.y = 0.4;
       wall.castShadow = wall.receiveShadow = true;
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.08, 0.82), perimeterMat);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.08, 0.82), wallCapMaterial);
       cap.position.y = 0.44;
       wall.add(cap); wallRoot.add(wall); scene.add(wallRoot); visionBlockers.push(wall);
       wallReveals.push({ root: wallRoot, delay: 0.08 + wallRevealIndex * 0.065, revealed: !active });
@@ -375,9 +376,10 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const spawnFocus = worldFor(START.c, START.r).multiply(new THREE.Vector3(0.78, 0, 0.72));
     spawnFocus.y = 0.1;
     const lightOffset = new THREE.Vector3();
-    const deathTiming = reduceMotion
-      ? { hold: 140, push: 280, travel: 320, pullout: 400 }
-      : { hold: 420, push: 880, travel: 900, pullout: 1100 };
+    const deathTiming = { hold: 900, push: 1900, travel: 1400, pullout: 1800 };
+    const deathOrbit = reduceMotion
+      ? { closeup: -0.14, spawn: 0.1 }
+      : { closeup: -0.46, spawn: 0.32 };
     const state = {
       health: 3, alert: 0, hasLoot: false, smokeReady: true, dashReady: true, dashArmed: false,
       smokeUntil: 0, alarms: 0, timeLeft: 75, elapsed: 0, moving: false, moveT: 0,
@@ -385,7 +387,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       guardProgress: 0, guardDir: 1, guardPause: 0.5, sightTime: 0, chaseUntil: 0,
       invulnerableUntil: 0, usedRunes: new Set<string>(), ended: false, freezeUntil: 0, shakeUntil: 0,
       respawning: false, cameraTransition: (active ? 'introPending' : 'normal') as 'normal' | 'introPending' | 'intro' | 'death' | 'revive', cameraTransitionAt: 0,
-      cameraTransitionElapsed: 0, userZoom: 1, deathStartZoom: 1, deathPeakZoom: 2.0,
+      cameraTransitionElapsed: 0, userZoom: 1, deathStartZoom: 1, deathPeakZoom: 3.8,
       lastHud: 0, selectedTile: null as THREE.Mesh | null,
     };
     mount.dataset.effectActive = active ? 'true' : 'false';
@@ -448,7 +450,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       state.cameraTransition = 'death'; state.cameraTransitionAt = performance.now(); state.cameraTransitionElapsed = 0;
       deathBurstDone = false;
       state.deathStartZoom = state.userZoom;
-      state.deathPeakZoom = Math.min(2.4, Math.max(2.0, state.userZoom + 0.84));
+      state.deathPeakZoom = Math.min(4.2, Math.max(3.8, state.userZoom + 2.8));
       deathHoldFocus.copy(cameraFocus);
       deathSubjectFocus.set(playerRoot.position.x * 0.78, 0.1, playerRoot.position.z * 0.72);
       setPlayerDeathTint(true);
@@ -805,14 +807,14 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
           const p = THREE.MathUtils.clamp((age - pushStart) / deathTiming.push, 0, 1);
           const eased = p * p * (3 - 2 * p);
           cameraFocus.lerpVectors(deathHoldFocus, deathSubjectFocus, eased);
-          orbitAngle = THREE.MathUtils.lerp(0, -0.38, eased);
+          orbitAngle = THREE.MathUtils.lerp(0, deathOrbit.closeup, eased);
           camera.zoom = THREE.MathUtils.lerp(state.deathStartZoom, state.deathPeakZoom, eased);
           mount.dataset.deathCameraPhase = 'push-orbit';
         } else {
           const p = THREE.MathUtils.clamp((age - travelStart) / deathTiming.travel, 0, 1);
           const eased = p * p * (3 - 2 * p);
           cameraFocus.lerpVectors(deathSubjectFocus, spawnFocus, eased);
-          orbitAngle = THREE.MathUtils.lerp(-0.38, 0.28, eased);
+          orbitAngle = THREE.MathUtils.lerp(deathOrbit.closeup, deathOrbit.spawn, eased);
           camera.zoom = state.deathPeakZoom;
           mount.dataset.deathCameraPhase = 'travel-to-spawn';
           finishDeathTravel = p >= 1;
@@ -821,7 +823,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         const p = Math.min(1, state.cameraTransitionElapsed / deathTiming.pullout);
         const eased = p * p * (3 - 2 * p);
         cameraFocus.copy(spawnFocus);
-        orbitAngle = THREE.MathUtils.lerp(0.28, 0, eased);
+        orbitAngle = THREE.MathUtils.lerp(deathOrbit.spawn, 0, eased);
         camera.zoom = THREE.MathUtils.lerp(state.deathPeakZoom, state.userZoom, eased);
         if (!reduceMotion) {
           const appearP = THREE.MathUtils.clamp(p / 0.38, 0, 1);
@@ -887,7 +889,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       mount.dataset.guardForward = `${new THREE.Vector3(0, 0, 1).applyQuaternion(guardRoot.quaternion).x.toFixed(3)},${new THREE.Vector3(0, 0, 1).applyQuaternion(guardRoot.quaternion).z.toFixed(3)}`;
       mount.dataset.guardPosition = `${guardRoot.position.x.toFixed(3)},${guardRoot.position.z.toFixed(3)}`;
       mount.dataset.readabilityMarkers = 'player,entrance,relic,guard,spike,rune,moves';
-      mount.dataset.materialVocabulary = 'dark-reflective-wall,metal-foundation,crystal';
+      mount.dataset.materialVocabulary = 'dark-reflective-wall,matte-stone-cap,metal-foundation,crystal';
       composer.render();
       if (finishDeathTravel && state.cameraTransition === 'death') revealPlayerAtSpawn();
     }
