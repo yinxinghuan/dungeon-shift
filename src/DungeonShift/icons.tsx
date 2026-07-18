@@ -9,6 +9,7 @@ export const DashIcon = (props: SVGProps<SVGSVGElement>) => <Icon {...props}><pa
 export const RelicIcon = (props: SVGProps<SVGSVGElement>) => <Icon {...props}><path d="m12 3 6 4v8l-6 6-6-6V7l6-4Z"/><path d="m6 7 6 4 6-4M12 11v10"/></Icon>;
 export const HeartIcon = (props: SVGProps<SVGSVGElement>) => <Icon {...props}><path d="M20 8.5c0 5-8 10-8 10s-8-5-8-10A4.5 4.5 0 0 1 12 5a4.5 4.5 0 0 1 8 3.5Z"/></Icon>;
 export const ArrowIcon = (props: SVGProps<SVGSVGElement>) => <Icon {...props}><path d="m9 5 7 7-7 7"/></Icon>;
+export const ExitIcon = (props: SVGProps<SVGSVGElement>) => <Icon {...props}><path d="M5 21V4h14v17M8 21V7h8v14"/><path d="m10 11 3 3-3 3M13 14H6"/></Icon>;
 export const LockIcon = (props: SVGProps<SVGSVGElement>) => <Icon {...props}><rect x="5" y="10" width="14" height="11"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></Icon>;
 export const WallIcon = (props: SVGProps<SVGSVGElement>) => <Icon {...props}><path d="M3 5h18v14H3zM3 10h18M3 15h18M8 5v5m8-5v5m-5 0v5m7 0v4M6 15v4"/></Icon>;
 export const SpikeIcon = (props: SVGProps<SVGSVGElement>) => <Icon {...props}><path d="m3 19 3-9 3 9 3-13 3 13 3-9 3 9H3Z"/></Icon>;
