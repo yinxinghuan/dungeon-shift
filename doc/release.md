@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-本地项目已达到可执行发布状态。代码、正式海报、平台注册条目、永久 UUID、生产构建、相对路径和视觉发布候选均已通过门禁；尚未创建 GitHub 远端、提交、推送、启用 Pages 或运行平台迁移。
+游戏代码与公开列表已经上线。代码、正式海报、平台注册条目、永久 UUID、生产构建、相对路径和视觉发布候选均已通过门禁；客户端平台数据库仍等待同事运行工作区外的迁移工具。
 
 ## 已完成门禁
 
@@ -17,22 +17,26 @@
 - UI 基础：严格审计无功能 Emoji；发布候选 10 个状态无控制台错误、无页面溢出、无小于 44×44 的可见交互目标。
 - 跨用户规则：档案、结算和排行榜的其他用户头像+姓名可打开资料；本人显示 `你 / YOU` 且不触发资料跳转。
 - 文档：requirements、visual、technical 三份文档齐全并与最终实现一致。
-- 发布工程：本地 Git 仓库为 `master`，`.github/workflows/deploy.yml` 使用 Node 20 构建并部署 `dist/`。
+- 发布工程：公开仓库为 `https://github.com/yinxinghuan/dungeon-shift`，默认分支为 `master`；`.github/workflows/deploy.yml` 使用 Node 20 构建并部署 `dist/`。
 
 ## 非阻塞说明
 
 - 生产 JS 约 710 kB、gzip 约 195 kB，Vite 给出大 chunk 提示；这不会阻止发布，且主要来自 Three.js。后续可把场景和后处理按屏幕动态拆包以优化首载。
 - 普通浏览器已覆盖平台外降级状态；真实 Aigram 用户资料、跨用户存档、事件通知和成绩提交仍需在上线后的平台 WebView 做一次烟雾测试。
 
-## 执行发布时的顺序
+## 上线记录
 
-1. 创建公开远端 `yinxinghuan/dungeon-shift`，默认分支使用 `master`。
-2. 在游戏仓库提交并推送当前源代码与 `public/poster.png`，确认 Pages workflow 成功。
-3. 启用 GitHub Pages workflow 部署，访问 `https://yinxinghuan.github.io/dungeon-shift/`。
-4. 从线上 HTML 找到实际 JS bundle，并搜索 `DUNGEON SHIFT` 或 `SET THE AMBUSH`，确认线上不是旧包。
-5. 在 games repo 提交 `games.json`、`add-categories.py` 与 `posters/dungeon-shift.png` 并推送。
-6. 运行平台迁移工具入库；仅 push games repo 不会自动进入客户端数据库。
-7. 在 AlterU WebView 完成一次发布地牢、社区读取、挑战结算、作者通知、资料跳转与排行榜提交烟雾测试。
+1. 游戏仓库初始发布提交：`18c22cc`；公开仓库和 `master` 默认分支已创建。
+2. GitHub Pages 部署运行 `29647972639` 成功；在线地址：`https://yinxinghuan.github.io/dungeon-shift/`。
+3. 线上 HTML 已指向 `assets/index-C34i3GuF.js` 与 `assets/index-DYRgTzLa.css`；bundle 检出 `SET THE AMBUSH` 与 `ds-rank__self`，证明不是旧包。
+4. 线上 `poster.png` 返回 HTTP 200。
+5. games repo 提交 `26bd342` 已推送；公开 `games.json` 首位为 `dungeon-shift`，UUID、category、zipurl 完整。
+6. 公开列表海报为 1024×1024，线上与本地 SHA-256 均为 `dece4da0bf8b61387ad765561bea797237e808d4782dab0b635165f69e4be4f0`。
+
+## 外部待办
+
+1. 请同事运行 games.json → 平台 DB 的迁移工具；当前工作区不存在该工具，不能把公开清单更新误报为客户端已入库。
+2. 入库后在 AlterU WebView 完成一次发布地牢、社区读取、挑战结算、作者通知、资料跳转与排行榜提交烟雾测试。
 
 ## 发布证据
 
