@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dungeon Shift · UI Direction Review</title>
+  <style>
+    @font-face{font-family:Barlow;src:url('../node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
+    @font-face{font-family:Barlow;src:url('../node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-700-normal.woff2') format('woff2');font-weight:700;font-display:swap}
+    @font-face{font-family:Plex;src:url('../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
+    @font-face{font-family:Plex;src:url('../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
+    :root{--page:#090c12;--ink:#f1eee7;--soft:#a9aaa5;--line:#30363b;--teal:#66c9bd;--gold:#e0b866;--danger:#df7167;--font-ui:Plex,"PingFang SC","Noto Sans SC",sans-serif;--font-display:Barlow,"PingFang SC","Noto Sans SC",sans-serif}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth;background:var(--page)}
+    body{margin:0;color:var(--ink);background:radial-gradient(circle at 50% -10%,#19212d 0,transparent 38%),var(--page);font-family:var(--font-ui);font-size:16px;line-height:1.5}
+    button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent}
+    button:focus-visible{outline:2px solid #fff;outline-offset:3px}
+    svg{width:1.25em;height:1.25em;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:square;stroke-linejoin:miter}
+    .shell{width:min(1440px,100%);margin:auto;padding:0 32px 100px}
+    .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:24px;min-height:76px;margin:0 -32px;padding:0 32px;border-bottom:1px solid rgba(255,255,255,.09);background:rgba(9,12,18,.9);backdrop-filter:blur(16px)}
+    .brand{display:flex;align-items:center;gap:12px;min-width:250px}
+    .brand__mark{width:36px;height:36px;display:grid;place-items:center;border:1px solid #655330;color:var(--gold);transform:rotate(3deg)}
+    .brand__mark svg{width:20px}
+    .brand strong{display:block;font-family:var(--font-display);font-size:20px;line-height:1;letter-spacing:.04em}
+    .brand small{display:block;margin-top:4px;color:var(--soft);font-size:9px;letter-spacing:.18em}
+    .view-switch{margin-left:auto;display:flex;gap:4px;padding:4px;border:1px solid var(--line);background:#11161d}
+    .view-switch button{min-height:44px;padding:0 16px;border:0;color:var(--soft);background:transparent;font-size:12px;font-weight:600;letter-spacing:.05em;cursor:pointer}
+    .view-switch button.is-active{color:#081413;background:var(--teal)}
+    .intro{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.7fr);gap:64px;padding:82px 0 64px;border-bottom:1px solid var(--line)}
+    .eyebrow{display:flex;align-items:center;gap:10px;color:var(--teal);font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase}
+    .eyebrow::before{content:"";width:28px;height:2px;background:currentColor}
+    .intro h1{max-width:850px;margin:18px 0 20px;font-family:var(--font-display);font-size:clamp(54px,7vw,96px);font-weight:600;line-height:.88;letter-spacing:-.01em;text-transform:uppercase}
+    .intro p{max-width:680px;margin:0;color:#babbb7;font-size:18px;line-height:1.7}
+    .brief{align-self:end;padding:22px;border:1px solid var(--line);background:#11161b;box-shadow:8px 8px 0 #05070a}
+    .brief h2{margin:0 0 15px;font:600 19px/1 var(--font-display);letter-spacing:.04em;text-transform:uppercase}
+    .brief dl{display:grid;grid-template-columns:92px 1fr;gap:10px 14px;margin:0;font-size:13px}
+    .brief dt{color:#7e8689}.brief dd{margin:0;color:#d7d5cf}
+    .section-title{display:flex;align-items:end;justify-content:space-between;gap:30px;padding:72px 0 28px}
+    .section-title h2{margin:0;font:600 clamp(38px,5vw,62px)/.92 var(--font-display);text-transform:uppercase}
+    .section-title p{max-width:540px;margin:0;color:var(--soft);font-size:14px}
+    .directions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:start}
+    .direction{position:relative;min-width:0;border:1px solid var(--line);background:#0d1117;overflow:hidden;transition:border-color .2s,transform .2s}
+    .direction:hover{transform:translateY(-3px);border-color:#596168}
+    .direction.is-picked{border-color:var(--teal);box-shadow:0 0 0 1px var(--teal)}
+    .direction__head{min-height:178px;padding:22px 22px 20px;border-bottom:1px solid var(--line)}
+    .direction__meta{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--soft);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+    .recommend{padding:5px 8px;color:#0a1715;background:var(--teal);letter-spacing:.08em}
+    .direction h3{margin:20px 0 8px;font:600 38px/.9 var(--font-display);text-transform:uppercase}
+    .direction__head p{margin:0;color:#a9adae;font-size:13px;line-height:1.55}
+    .phone-wrap{position:relative;display:grid;place-items:center;min-height:680px;padding:34px 18px 30px;overflow:hidden}
+    .phone-wrap::before{content:"";position:absolute;inset:15% -10% -20%;opacity:.5;filter:blur(50px);pointer-events:none}
+    .phone{position:relative;width:310px;max-width:100%;aspect-ratio:390/844;overflow:hidden;border:7px solid #1d2227;border-radius:30px;background:#080c12;box-shadow:0 28px 60px rgba(0,0,0,.55);isolation:isolate}
+    .phone::before{content:"";position:absolute;top:7px;left:50%;z-index:20;width:64px;height:16px;border-radius:10px;background:#11161b;transform:translateX(-50%)}
+    .screen{position:absolute;inset:0;display:none;overflow:hidden}.screen.is-active{display:block}
+    .game-bg{position:absolute;inset:0;background:url('../_qa/ui/gate-d-final-gameplay-390x844.png') center/cover no-repeat;filter:saturate(.82) brightness(.72)}
+    .game-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,7,12,.84),transparent 27%,transparent 64%,rgba(4,7,12,.92))}
+    .mock-hud{position:absolute;z-index:2;top:28px;left:12px;right:12px;display:grid;grid-template-columns:58px 1fr 47px;align-items:center;min-height:58px;padding:8px 9px}
+    .mock-hud small{display:block;font-size:7px;font-weight:600;letter-spacing:.15em}.mock-hud strong{font:700 22px/1 var(--font-display)}
+    .mock-hud__loot{display:flex;align-items:center;justify-content:center;gap:5px;font-size:8px;font-weight:600}.mock-hud__loot svg{width:14px}
+    .mock-hud__life{text-align:right}.mock-hud__bar{grid-column:1/-1;height:4px;margin-top:6px}.mock-hud__bar i{display:block;width:42%;height:100%}
+    .objective{position:absolute;z-index:3;top:105px;left:50%;width:max-content;max-width:78%;padding:8px 12px;transform:translateX(-50%);font-size:10px;text-align:center}
+    .game-actions{position:absolute;z-index:4;left:50%;bottom:20px;display:flex;gap:8px;transform:translateX(-50%)}
+    .game-actions button{width:70px;min-height:52px;display:grid;place-items:center;gap:2px;border:0;background:none;font-size:8px;font-weight:600}.game-actions svg{width:19px}
+    .builder-screen,.archive-screen{padding:32px 13px 16px}
+    .mini-head{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:9px}.mini-head button{width:44px;height:44px;display:grid;place-items:center;border:0;background:none}.mini-head svg{width:17px}.mini-head small{display:block;font-size:7px;font-weight:600;letter-spacing:.15em}.mini-head h4{margin:2px 0 0;font:600 24px/.9 var(--font-display);text-transform:uppercase}.mini-budget{font:700 22px/1 var(--font-display)}.mini-budget span{display:block;margin-top:2px;font:600 6px/1 var(--font-ui);letter-spacing:.1em;text-align:right}
+    .mini-copy{margin:11px 0 10px;font-size:10px;line-height:1.45}
+    .dungeon-grid{width:198px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr);gap:2px;padding:5px;aspect-ratio:5/7}
+    .dungeon-grid i{position:relative;display:grid;place-items:center}.dungeon-grid i.wall::after{content:"";width:58%;height:3px;background:currentColor;box-shadow:0 -5px 0 currentColor,0 5px 0 currentColor}.dungeon-grid i.vault::after,.dungeon-grid i.entry::after{content:"";width:11px;height:11px;transform:rotate(45deg);border:2px solid currentColor}.dungeon-grid i.guard::after{content:"";width:12px;height:14px;border-radius:50% 50% 30% 30%;background:currentColor}.dungeon-grid i.spike::after{content:"";width:18px;height:14px;background:currentColor;clip-path:polygon(0 100%,18% 0,35% 100%,52% 0,70% 100%,88% 0,100% 100%)}
+    .tool-row{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:10px}.tool-row button{position:relative;min-width:0;min-height:48px;display:grid;place-items:center;gap:2px;padding:3px 1px;border:0;background:none;font-size:6px}.tool-row svg{width:15px}.tool-row b{position:absolute;right:3px;top:3px;font-size:6px}.publish{width:100%;min-height:45px;margin-top:10px;border:0;font-size:10px;font-weight:700;letter-spacing:.03em}
+    .archive-tabs{display:grid;grid-template-columns:1fr 1fr;margin-top:13px}.archive-tabs span{padding:10px 2px;font-size:8px;font-weight:600;letter-spacing:.1em;text-align:center}
+    .dungeon-card{display:grid;grid-template-columns:80px 1fr;gap:10px;margin-top:10px;padding:8px}.dungeon-card .dungeon-grid{width:80px;padding:2px;gap:1px}.card-copy small{font-size:7px;letter-spacing:.08em}.card-copy h5{margin:7px 0 19px;font:600 22px/.9 var(--font-display)}.keeper{display:flex;align-items:center;gap:6px;font-size:7px}.avatar{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;font-weight:600}.raid{min-width:44px;min-height:44px;margin-left:auto;padding:0 9px;border:0;font-size:7px;font-weight:700}
+    .pick{width:calc(100% - 36px);min-height:48px;margin:0 18px 20px;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid currentColor;background:transparent;font-size:12px;font-weight:600;letter-spacing:.04em;cursor:pointer}.pick svg{width:17px}.pick.is-picked{color:#081413;background:var(--teal);border-color:var(--teal)}
+    .tokens{padding:20px 22px 22px;border-top:1px solid var(--line)}
+    .tokens h4{margin:0 0 12px;color:#7f878b;font-size:9px;letter-spacing:.14em;text-transform:uppercase}
+    .swatches{display:flex;gap:6px}.swatches i{width:24px;height:24px;border:1px solid rgba(255,255,255,.18)}
+    .risk{margin:15px 0 0;padding-top:12px;border-top:1px solid var(--line);color:#a5a9a8;font-size:11px;line-height:1.5}.risk strong{color:#e1ddd4}
+    /* A — Midnight Archive */
+    .theme-a .phone-wrap::before{background:#326f68}.theme-a .phone{border-color:#2a302f;border-radius:20px}.theme-a .screen{--accent:#65c8bd;--reward:#e0b665;--panel:#171d1d;--edge:#4e5652;color:#eeeae1;background:#0b1016;font-family:var(--font-ui)}
+    .theme-a .mock-hud{border:1px solid var(--edge);background:rgba(22,28,28,.96);box-shadow:3px 4px 0 rgba(0,0,0,.35)}.theme-a .mock-hud small{color:#aaa9a3}.theme-a .mock-hud__loot{color:var(--reward);border-inline:1px solid #38403d}.theme-a .mock-hud__bar{border:1px solid var(--edge);background:#252c2a}.theme-a .mock-hud__bar i{background:#c76158}.theme-a .objective{border-left:2px solid var(--reward);background:rgba(15,20,21,.92)}.theme-a .game-actions button{color:#eeeae1;border:1px solid var(--edge);border-radius:2px;background:rgba(24,30,30,.96);box-shadow:0 3px 0 #050707}.theme-a .mini-head small{color:var(--accent)}.theme-a .mini-head button{border:1px solid var(--edge);background:var(--panel)}.theme-a .mini-budget{color:var(--reward)}.theme-a .mini-copy{color:#aaa9a3}.theme-a .dungeon-grid{border:1px solid var(--edge);background:#111718}.theme-a .dungeon-grid i{color:#75736c;border:1px solid #4c514e;background:#76736d}.theme-a .dungeon-grid i.wall{color:#9c988f;background:#353b39}.theme-a .dungeon-grid i.vault{color:#f1d28d;background:#715625}.theme-a .dungeon-grid i.entry{color:#80d4cb;background:#215c57}.theme-a .dungeon-grid i.guard{color:#dd6a61}.theme-a .dungeon-grid i.spike{color:#eeeae1}.theme-a .tool-row button{color:#a5aaa7;border:1px solid var(--edge);background:var(--panel)}.theme-a .tool-row button.active{color:var(--accent);border-color:var(--accent);box-shadow:inset 0 -3px 0 #397c74}.theme-a .publish,.theme-a .raid{color:#0a1715;background:var(--accent);box-shadow:0 4px 0 #2e6e68}.theme-a .archive-tabs{border-bottom:1px solid var(--edge)}.theme-a .archive-tabs .active{color:#fff;border-bottom:3px solid var(--accent)}.theme-a .dungeon-card{border:1px solid var(--edge);background:var(--panel);box-shadow:3px 4px 0 rgba(0,0,0,.3)}.theme-a .card-copy small{color:var(--reward)}.theme-a .avatar{border:1px solid var(--edge);background:#303735}.theme-a .swatches i:nth-child(1){background:#0c1018}.theme-a .swatches i:nth-child(2){background:#171d1d}.theme-a .swatches i:nth-child(3){background:#65c8bd}.theme-a .swatches i:nth-child(4){background:#e0b665}.theme-a .swatches i:nth-child(5){background:#c76158}
+    /* B — Ritual Blueprint */
+    .theme-b .phone-wrap::before{background:#245e7c}.theme-b .phone{border-color:#1a313c;border-radius:7px}.theme-b .screen{--cyan:#4bd4d1;--copper:#d98e55;--navy:#07151d;--grid:#183341;color:#dff6f4;background:var(--navy);font-family:var(--font-ui)}
+    .theme-b .game-bg{filter:hue-rotate(18deg) saturate(.7) brightness(.48)}.theme-b .game-bg::after{background:linear-gradient(180deg,#06151de8,transparent 38%,#06151de8),repeating-linear-gradient(0deg,transparent 0 29px,rgba(75,212,209,.035) 30px),repeating-linear-gradient(90deg,transparent 0 29px,rgba(75,212,209,.035) 30px)}
+    .theme-b .mock-hud{border:1px solid #337184;background:rgba(6,22,30,.94);clip-path:polygon(0 0,96% 0,100% 24%,100% 100%,4% 100%,0 76%)}.theme-b .mock-hud small{color:#70aeba}.theme-b .mock-hud__loot{color:var(--copper);border-inline:1px solid #285363}.theme-b .mock-hud__bar{background:#102a35}.theme-b .mock-hud__bar i{background:repeating-linear-gradient(90deg,#e17162 0 16px,transparent 16px 19px)}.theme-b .objective{color:var(--cyan);border:1px solid #2d7180;background:#071922;font-family:ui-monospace,monospace;clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}.theme-b .game-actions button{color:var(--cyan);border:1px solid #2f6c78;background:#071b24;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}.theme-b .builder-screen,.theme-b .archive-screen{background-image:linear-gradient(rgba(75,212,209,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(75,212,209,.045) 1px,transparent 1px);background-size:22px 22px}.theme-b .mini-head small{color:var(--cyan)}.theme-b .mini-head button{border:1px solid #2f6c78;color:var(--cyan)}.theme-b .mini-budget{color:var(--copper)}.theme-b .mini-copy{color:#7faab1}.theme-b .dungeon-grid{border:1px solid #397b88;background:#06151d;box-shadow:inset 0 0 0 4px rgba(75,212,209,.04)}.theme-b .dungeon-grid i{color:#37636d;border:1px solid #27505c;background:#0d2934}.theme-b .dungeon-grid i.wall{color:#7ca8ac;background:#173743}.theme-b .dungeon-grid i.vault{color:#f0ae70;background:#5a321f}.theme-b .dungeon-grid i.entry{color:var(--cyan);background:#12444a}.theme-b .dungeon-grid i.guard{color:#eb7467}.theme-b .dungeon-grid i.spike{color:#d8efed}.theme-b .tool-row button{color:#79a8ae;border:1px solid #285b68;background:#09202a;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%)}.theme-b .tool-row button.active{color:var(--cyan);border-color:var(--cyan);background:#11343d}.theme-b .publish,.theme-b .raid{color:#031718;background:var(--cyan);clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px))}.theme-b .archive-tabs{border-bottom:1px solid #2a6170}.theme-b .archive-tabs .active{color:var(--cyan);border-bottom:3px solid var(--cyan)}.theme-b .dungeon-card{border:1px solid #2e6672;background:#09202a;clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,0 100%)}.theme-b .card-copy small{color:var(--copper)}.theme-b .avatar{border:1px solid #397985;background:#12303a}.theme-b .swatches i:nth-child(1){background:#07151d}.theme-b .swatches i:nth-child(2){background:#0d2934}.theme-b .swatches i:nth-child(3){background:#4bd4d1}.theme-b .swatches i:nth-child(4){background:#d98e55}.theme-b .swatches i:nth-child(5){background:#eb7467}
+    /* C — Velvet Nocturne */
+    .theme-c .phone-wrap::before{background:#6b263b}.theme-c .phone{border-color:#392329;border-radius:38px}.theme-c .screen{--wine:#6f2036;--rose:#d6717e;--brass:#d6ad61;--ivory:#f5ead9;color:var(--ivory);background:#130d12;font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif}
+    .theme-c .game-bg{filter:sepia(.18) hue-rotate(320deg) saturate(.9) brightness(.58)}.theme-c .game-bg::after{background:radial-gradient(ellipse at 52% 48%,transparent 30%,rgba(19,7,13,.58) 70%),linear-gradient(180deg,#170b12e8,transparent 36%,#130b10e8)}
+    .theme-c .mock-hud{border-top:1px solid #9c7746;border-bottom:1px solid #6b4f36;background:linear-gradient(90deg,transparent,rgba(33,16,22,.96) 10% 90%,transparent)}.theme-c .mock-hud small{color:#b9a896;font-family:var(--font-ui)}.theme-c .mock-hud strong{font-family:Georgia,serif}.theme-c .mock-hud__loot{color:var(--brass);border-inline:1px solid #624732}.theme-c .mock-hud__bar{height:3px;background:#382128}.theme-c .mock-hud__bar i{background:var(--rose)}.theme-c .objective{color:#f3e4cf;border:1px solid #735541;border-radius:999px;background:rgba(31,13,20,.92);font-style:italic}.theme-c .game-actions button{color:var(--ivory);border:1px solid #795b46;border-radius:50% 50% 8px 8px;background:linear-gradient(#341a24,#1e1117);box-shadow:0 4px 0 #0b0608}.theme-c .builder-screen,.theme-c .archive-screen{background:radial-gradient(circle at 50% 15%,rgba(111,32,54,.24),transparent 42%),#130d12}.theme-c .mini-head small{color:var(--brass);font-family:var(--font-ui)}.theme-c .mini-head h4{font-family:Georgia,"Songti SC",serif;font-size:20px}.theme-c .mini-head button{border:1px solid #765743;border-radius:50%;color:var(--brass)}.theme-c .mini-budget{color:var(--brass);font-family:Georgia,serif}.theme-c .mini-copy{color:#b8a99c}.theme-c .dungeon-grid{padding:7px;border:1px solid #765743;border-radius:50% 50% 5px 5px;background:#190e14;box-shadow:0 0 0 3px #27151c,0 0 0 4px #593c2e}.theme-c .dungeon-grid i{color:#71635e;border:1px solid #503d38;background:#615752}.theme-c .dungeon-grid i.wall{color:#b2a08f;background:#3a292b}.theme-c .dungeon-grid i.vault{color:#f3d690;background:#795824}.theme-c .dungeon-grid i.entry{color:#eb9a9f;background:#67263a}.theme-c .dungeon-grid i.guard{color:#ef7e85}.theme-c .dungeon-grid i.spike{color:#efe1ce}.theme-c .tool-row button{color:#b8a99c;border:1px solid #684a3a;border-radius:50% 50% 5px 5px;background:#211218}.theme-c .tool-row button.active{color:var(--brass);border-color:var(--brass);background:#3a1b26}.theme-c .publish,.theme-c .raid{color:#1c0c12;border:1px solid #f0d291;background:var(--brass);font-family:var(--font-ui);box-shadow:inset 0 0 0 2px #9a753e}.theme-c .archive-tabs{border-bottom:1px solid #604434;font-family:var(--font-ui)}.theme-c .archive-tabs .active{color:#f0d291;border-bottom:3px double var(--brass)}.theme-c .dungeon-card{border:1px solid #664737;border-radius:50% 50% 3px 3px;background:#211218;box-shadow:0 5px 16px rgba(0,0,0,.4)}.theme-c .card-copy small{color:var(--brass);font-family:var(--font-ui)}.theme-c .card-copy h5{font-family:Georgia,"Songti SC",serif;font-size:18px}.theme-c .keeper{font-family:var(--font-ui)}.theme-c .avatar{border:1px solid #8a6547;background:#3e2029}.theme-c .swatches i:nth-child(1){background:#130d12}.theme-c .swatches i:nth-child(2){background:#211218}.theme-c .swatches i:nth-child(3){background:#6f2036}.theme-c .swatches i:nth-child(4){background:#d6ad61}.theme-c .swatches i:nth-child(5){background:#d6717e}
+    .comparison{margin-top:70px;border-top:1px solid var(--line)}
+    .compare-grid{display:grid;grid-template-columns:180px repeat(3,1fr);border:1px solid var(--line);border-bottom:0}
+    .compare-grid > div{min-height:58px;padding:14px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:12px}.compare-grid > div:nth-child(4n){border-right:0}.compare-grid .label{color:#7f878b}.compare-grid .head{font:600 19px/1 var(--font-display);text-transform:uppercase}.score{color:var(--gold);font-weight:600}.decision{display:flex;align-items:center;justify-content:space-between;gap:30px;margin-top:32px;padding:24px;border:1px solid #3f494c;background:#11171c}.decision strong{display:block;font:600 25px/1 var(--font-display);text-transform:uppercase}.decision span{display:block;margin-top:8px;color:var(--soft);font-size:13px}.decision__value{min-width:210px;padding:13px;border-left:3px solid var(--teal);color:var(--teal);background:#172623;text-align:center;font-size:13px;font-weight:600}
+    @media(max-width:1100px){.directions{grid-template-columns:1fr}.direction{display:grid;grid-template-columns:330px 1fr}.direction__head{grid-column:1}.phone-wrap{grid-column:2;grid-row:1/4}.tokens,.pick{grid-column:1}.phone-wrap{min-height:650px}.intro{grid-template-columns:1fr}.brief{max-width:640px}.compare-grid{grid-template-columns:130px repeat(3,1fr)}}
+    @media(max-width:720px){.shell{padding:0 16px 70px}.topbar{margin:0 -16px;padding:10px 16px;flex-wrap:wrap}.brand{min-width:0}.view-switch{width:100%;order:2}.view-switch button{flex:1;padding:0 5px}.intro{padding:48px 0;gap:30px}.intro h1{font-size:54px}.section-title{display:block;padding-top:50px}.section-title p{margin-top:14px}.direction{display:block}.phone-wrap{min-height:650px}.compare-grid{grid-template-columns:105px repeat(3,minmax(100px,1fr));overflow-x:auto}.compare-grid > div{font-size:10px}.decision{align-items:flex-start;flex-direction:column}.decision__value{width:100%}}
+    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute"><defs>
+    <symbol id="i-relic" viewBox="0 0 24 24"><path d="m12 3 6 4v8l-6 6-6-6V7l6-4Z"/><path d="m6 7 6 4 6-4M12 11v10"/></symbol>
+    <symbol id="i-smoke" viewBox="0 0 24 24"><path d="M5 16h11a3 3 0 0 0 0-6 5 5 0 0 0-9.4-1.8A4 4 0 0 0 5 16Z"/><path d="M7 19h10M10 22h6"/></symbol>
+    <symbol id="i-dash" viewBox="0 0 24 24"><path d="M4 7h9M2 12h10M5 17h8"/><path d="m13 5 7 7-7 7"/></symbol>
+    <symbol id="i-wall" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 10h18M3 15h18M8 5v5m8-5v5m-5 0v5m7 0v4M6 15v4"/></symbol>
+    <symbol id="i-spike" viewBox="0 0 24 24"><path d="m3 19 3-9 3 9 3-13 3 13 3-9 3 9H3Z"/></symbol>
+    <symbol id="i-rune" viewBox="0 0 24 24"><path d="m12 3 8 9-8 9-8-9 8-9Z"/><path d="m12 7 4 5-4 5-4-5 4-5Z"/></symbol>
+    <symbol id="i-guard" viewBox="0 0 24 24"><path d="M5 10V6l7-3 7 3v4c0 5-3 9-7 11-4-2-7-6-7-11Z"/><path d="M9 11h6M10 8h.01M14 8h.01"/></symbol>
+    <symbol id="i-erase" viewBox="0 0 24 24"><path d="m4 15 9-10 7 6-7 8H8l-4-4Z"/><path d="m10 9 7 6M13 19h8"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  </defs></svg>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand__mark"><svg><use href="#i-relic"/></svg></span><span><strong>DUNGEON SHIFT</strong><small>UI DIRECTION REVIEW · 2026.07</small></span></div>
+      <div class="view-switch" role="tablist" aria-label="预览页面">
+        <button class="is-active" data-view="gameplay" role="tab" aria-selected="true">潜入 HUD</button>
+        <button data-view="builder" role="tab" aria-selected="false">地牢建造</button>
+        <button data-view="archive" role="tab" aria-selected="false">挑战档案</button>
+      </div>
+    </header>
+
+    <section class="intro">
+      <div><div class="eyebrow">Visual refinement study</div><h1>同一个地牢，<br>三种界面性格</h1><p>目标不是给当前 UI 加更多装饰，而是让界面拥有可识别的材质、排版节奏和叙事姿态。三套方案共用现有 3D 角色、场景灯光与玩法结构，评审后可直接落到真实游戏。</p></div>
+      <aside class="brief"><h2>评审基准</h2><dl><dt>主要玩家</dt><dd>移动端异步造关与潜入玩家</dd><dt>核心动作</dt><dd>读懂危险、布置伏击、挑战真人地牢</dd><dt>目标视口</dt><dd>390×844 / 360×640</dd><dt>必须保留</dt><dd>3D 立体地牢、青色入口、琥珀宝库、红色危险</dd><dt>必须改善</dt><dd>标题气质、组件细节、层级密度、社交身份感</dd></dl></aside>
+    </section>
+
+    <div class="section-title"><h2>Direction cards</h2><p>顶部切换三个真实界面状态。每个方向都定义了形状、材质、排版、HUD、建造工具、档案卡和生产风险。</p></div>
+
+    <section class="directions">
+      <article class="direction theme-a" data-direction="午夜典藏">
+        <header class="direction__head"><div class="direction__meta"><span>01 · Editorial diorama</span><span class="recommend">推荐</span></div><h3>午夜典藏</h3><p>把玩家视为潜入博物馆保险库的专业窃贼。冷静、克制、像一份有编号的馆藏行动档案。</p></header>
+        <div class="phone-wrap"><div class="phone">
+          <section class="screen gameplay is-active"><div class="game-bg"></div><div class="mock-hud"><div><small>TIME</small><strong>54</strong></div><div class="mock-hud__loot"><svg><use href="#i-relic"/></svg>SECURED</div><div class="mock-hud__life"><small>LIVES</small><strong>3</strong></div><div class="mock-hud__bar"><i></i></div></div><div class="objective">Relic secured. Return to the entrance.</div><div class="game-actions"><button><svg><use href="#i-smoke"/></svg>SMOKE</button><button><svg><use href="#i-dash"/></svg>DASH</button></div></section>
+          <section class="screen builder builder-screen"><div class="mini-head"><button aria-label="返回"><svg><use href="#i-back"/></svg></button><div><small>KEEPER MODE</small><h4>Set the ambush</h4></div><div class="mini-budget">4<span>PTS LEFT</span></div></div><p class="mini-copy">Spend the budget, preserve one route, make every tile feel intentional.</p><div class="dungeon-grid" data-grid></div><div class="tool-row" data-tools></div><button class="publish">PUBLISH DUNGEON</button></section>
+          <section class="screen archive archive-screen"><div class="mini-head"><button aria-label="返回"><svg><use href="#i-back"/></svg></button><div><small>ASYNC RAID ARCHIVE</small><h4>Choose a keeper</h4></div><svg><use href="#i-relic"/></svg></div><p class="mini-copy">A precise catalog of traps left by real players.</p><div class="archive-tabs"><span class="active">COMMUNITY</span><span>MY DUNGEONS 03</span></div><div class="dungeon-card"><div class="dungeon-grid" data-grid></div><div class="card-copy"><small>12/12 · 1 GUARD</small><h5>SHIFT 07</h5><div class="keeper"><span class="avatar">M</span>Mina<button class="raid">RAID</button></div></div></div></section>
+        </div></div>
+        <div class="tokens"><h4>Core palette</h4><div class="swatches"><i></i><i></i><i></i><i></i><i></i></div><p class="risk"><strong>优势：</strong>与现有 3D 世界衔接最稳，信息精度高，改造成本最低。<br><strong>风险：</strong>如果材质细节不足，可能仍显得略偏工具型。</p></div>
+        <button class="pick"><svg><use href="#i-check"/></svg><span>选择这个方向</span></button>
+      </article>
+
+      <article class="direction theme-b" data-direction="仪式蓝图">
+        <header class="direction__head"><div class="direction__meta"><span>02 · Tactical occult</span></div><h3>仪式蓝图</h3><p>把地牢理解为一张会发光的禁术施工图。更强调路线、预算、机关逻辑与地牢主的聪明设计。</p></header>
+        <div class="phone-wrap"><div class="phone">
+          <section class="screen gameplay is-active"><div class="game-bg"></div><div class="mock-hud"><div><small>RUN / 07</small><strong>54</strong></div><div class="mock-hud__loot"><svg><use href="#i-relic"/></svg>RELIC: 1</div><div class="mock-hud__life"><small>VITAL</small><strong>03</strong></div><div class="mock-hud__bar"><i></i></div></div><div class="objective">ROUTE UPDATED · RETURN TO E-07</div><div class="game-actions"><button><svg><use href="#i-smoke"/></svg>SMOKE</button><button><svg><use href="#i-dash"/></svg>DASH</button></div></section>
+          <section class="screen builder builder-screen"><div class="mini-head"><button aria-label="返回"><svg><use href="#i-back"/></svg></button><div><small>RITUAL LAYOUT / 03</small><h4>Author the route</h4></div><div class="mini-budget">04<span>ENERGY</span></div></div><p class="mini-copy">Every fixture changes the infiltration graph. Validate before transmission.</p><div class="dungeon-grid" data-grid></div><div class="tool-row" data-tools></div><button class="publish">VALIDATE + TRANSMIT</button></section>
+          <section class="screen archive archive-screen"><div class="mini-head"><button aria-label="返回"><svg><use href="#i-back"/></svg></button><div><small>REMOTE DUNGEON INDEX</small><h4>Select a route</h4></div><svg><use href="#i-rune"/></svg></div><p class="mini-copy">Threat topology from the six most recent keepers.</p><div class="archive-tabs"><span class="active">LIVE SIGNALS</span><span>MY SCHEMES 03</span></div><div class="dungeon-card"><div class="dungeon-grid" data-grid></div><div class="card-copy"><small>THREAT 08 · VALID</small><h5>HEX ROUTE 07</h5><div class="keeper"><span class="avatar">M</span>Mina<button class="raid">ENTER</button></div></div></div></section>
+        </div></div>
+        <div class="tokens"><h4>Core palette</h4><div class="swatches"><i></i><i></i><i></i><i></i><i></i></div><p class="risk"><strong>优势：</strong>建造模式最有辨识度，路线和状态表达最清楚。<br><strong>风险：</strong>过度技术化会削弱角色与“偷宝物”的情绪魅力。</p></div>
+        <button class="pick"><svg><use href="#i-check"/></svg><span>选择这个方向</span></button>
+      </article>
+
+      <article class="direction theme-c" data-direction="绒夜劫案">
+        <header class="direction__head"><div class="direction__meta"><span>03 · Cinematic gothic</span></div><h3>绒夜劫案</h3><p>把潜入包装成一场华丽哥特舞台剧。深酒红、黄铜和象牙白让角色、宝物与胜负更有戏剧张力。</p></header>
+        <div class="phone-wrap"><div class="phone">
+          <section class="screen gameplay is-active"><div class="game-bg"></div><div class="mock-hud"><div><small>Time remains</small><strong>54</strong></div><div class="mock-hud__loot"><svg><use href="#i-relic"/></svg>The relic</div><div class="mock-hud__life"><small>Fortune</small><strong>III</strong></div><div class="mock-hud__bar"><i></i></div></div><div class="objective">The prize is yours. Leave before the curtain falls.</div><div class="game-actions"><button><svg><use href="#i-smoke"/></svg>VEIL</button><button><svg><use href="#i-dash"/></svg>FLIT</button></div></section>
+          <section class="screen builder builder-screen"><div class="mini-head"><button aria-label="返回"><svg><use href="#i-back"/></svg></button><div><small>THE KEEPER'S SALON</small><h4>Stage the ambush</h4></div><div class="mini-budget">IV<span>SEALS LEFT</span></div></div><p class="mini-copy">Place every menace like an actor. Leave your guest one beautiful way through.</p><div class="dungeon-grid" data-grid></div><div class="tool-row" data-tools></div><button class="publish">OPEN THE HOUSE</button></section>
+          <section class="screen archive archive-screen"><div class="mini-head"><button aria-label="返回"><svg><use href="#i-back"/></svg></button><div><small>THE NOCTURNE REGISTER</small><h4>Accept an invitation</h4></div><svg><use href="#i-relic"/></svg></div><p class="mini-copy">Private dungeons, dangerous hosts, and one glittering prize.</p><div class="archive-tabs"><span class="active">TONIGHT</span><span>MY SALON 03</span></div><div class="dungeon-card"><div class="dungeon-grid" data-grid></div><div class="card-copy"><small>12 SEALS · 1 HOST</small><h5>The Seventh Room</h5><div class="keeper"><span class="avatar">M</span>Mina<button class="raid">ACCEPT</button></div></div></div></section>
+        </div></div>
+        <div class="tokens"><h4>Core palette</h4><div class="swatches"><i></i><i></i><i></i><i></i><i></i></div><p class="risk"><strong>优势：</strong>气质最强，角色和社交结果更有记忆点。<br><strong>风险：</strong>装饰边界必须严格控制，否则会抢占地牢本身的可读性。</p></div>
+        <button class="pick"><svg><use href="#i-check"/></svg><span>选择这个方向</span></button>
+      </article>
+    </section>
+
+    <section class="comparison">
+      <div class="section-title"><h2>Decision matrix</h2><p>评分针对现有工程和玩法，不是抽象审美排名。5 分代表最适合当前 Dungeon Shift。</p></div>
+      <div class="compare-grid">
+        <div class="label"></div><div class="head">午夜典藏</div><div class="head">仪式蓝图</div><div class="head">绒夜劫案</div>
+        <div class="label">3D 融合</div><div class="score">5 / 5</div><div class="score">4 / 5</div><div class="score">4 / 5</div>
+        <div class="label">建造可读性</div><div class="score">4 / 5</div><div class="score">5 / 5</div><div class="score">3 / 5</div>
+        <div class="label">角色魅力</div><div class="score">4 / 5</div><div class="score">3 / 5</div><div class="score">5 / 5</div>
+        <div class="label">社交身份感</div><div class="score">4 / 5</div><div class="score">3 / 5</div><div class="score">5 / 5</div>
+        <div class="label">实现风险</div><div>低</div><div>中</div><div>中高</div>
+        <div class="label">建议</div><div>作为完整 UI 基底</div><div>吸收建造页语言</div><div>吸收结算与作者卡</div>
+      </div>
+      <div class="decision"><div><strong>设计建议：以 01 为骨架，定向吸收 02 和 03</strong><span>首页、HUD、导航沿用「午夜典藏」；建造网格与路线反馈借鉴「仪式蓝图」；作者卡、胜负结算与宝物时刻借鉴「绒夜劫案」。</span></div><div class="decision__value" id="decision-value">尚未标记选择</div></div>
+    </section>
+  </main>
+  <script>
+    const viewButtons=[...document.querySelectorAll('[data-view]')];
+    const screens=[...document.querySelectorAll('.screen')];
+    function setView(view){viewButtons.forEach(b=>{const on=b.dataset.view===view;b.classList.toggle('is-active',on);b.setAttribute('aria-selected',String(on))});screens.forEach(s=>s.classList.toggle('is-active',s.classList.contains(view)))}
+    viewButtons.forEach(button=>button.addEventListener('click',()=>setView(button.dataset.view)));
+    const layout=['floor','floor','vault','floor','floor','wall','floor','floor','floor','wall','floor','wall','floor','guard','floor','floor','floor','floor','floor','floor','wall','floor','spike','floor','wall','floor','wall','floor','wall','floor','floor','floor','entry','floor','floor'];
+    document.querySelectorAll('[data-grid]').forEach(grid=>layout.forEach(type=>{const cell=document.createElement('i');cell.className=type;grid.appendChild(cell)}));
+    const toolData=[['i-wall','WALL','1'],['i-spike','SPIKE','2'],['i-rune','RUNE','2'],['i-guard','GUARD','3'],['i-erase','ERASE','']];
+    document.querySelectorAll('[data-tools]').forEach(row=>toolData.forEach(([icon,label,cost],i)=>{const button=document.createElement('button');if(i===0)button.className='active';button.innerHTML=`<svg><use href="#${icon}"/></svg><span>${label}</span>${cost?`<b>${cost}</b>`:''}`;button.addEventListener('click',()=>{[...row.children].forEach(x=>x.classList.remove('active'));button.classList.add('active')});row.appendChild(button)}));
+    const pickButtons=[...document.querySelectorAll('.pick')];
+    const decision=document.getElementById('decision-value');
+    function pick(card){document.querySelectorAll('.direction').forEach(x=>x.classList.toggle('is-picked',x===card));pickButtons.forEach(x=>{const on=x.closest('.direction')===card;x.classList.toggle('is-picked',on);x.querySelector('span').textContent=on?'已标记为偏好':'选择这个方向'});decision.textContent=`当前偏好：${card.dataset.direction}`;localStorage.setItem('dungeon_shift_ui_direction',card.dataset.direction)}
+    pickButtons.forEach(button=>button.addEventListener('click',()=>pick(button.closest('.direction'))));
+    const saved=localStorage.getItem('dungeon_shift_ui_direction');if(saved){const card=[...document.querySelectorAll('.direction')].find(x=>x.dataset.direction===saved);if(card)pick(card)}
+  </script>
+</body>
+</html>
