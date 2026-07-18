@@ -45,6 +45,7 @@ export interface DungeonAuthor {
 
 export interface WallEntry extends DungeonAuthor {
   dungeon: DungeonConfig;
+  plays?: number;
 }
 
 export interface HudState {

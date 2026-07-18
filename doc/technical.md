@@ -19,12 +19,12 @@
 - `src/DungeonShift/components/GuardPreview.tsx`：复用正式怪物工厂的低功耗透明 Three.js 预览；切换守卫时同步重建，卸载时释放模型几何、预览自有平台材质与 WebGL renderer，不销毁 `prims.js` 的共享材质缓存。
 - `src/DungeonShift/components/Archive.tsx`：本人/社区档案、乐观合并、作者资料入口、平台外 CTA 与挑战选择。
 - `src/DungeonShift/components/DungeonMiniMap.tsx`：编辑器与档案卡共用的 5×7 DOM 预览。
-- `src/DungeonShift/components/DungeonScene.tsx`：按 `DungeonConfig` 渲染 3D 关卡，处理输入、碰撞、守卫视野、机关、动画与特效。
+- `src/DungeonShift/components/DungeonScene.tsx`：按 `DungeonConfig` 渲染 3D 关卡，处理输入、可移动格提示、碰撞、守卫视野/寻路追击、机关、动画与特效。
 - `src/DungeonShift/components/RankPanel.tsx`：加载、空、平台外和榜单四种状态。
-- `src/DungeonShift/hooks/useDungeonWall.ts`：读取最近 6 位用户的最新存档，展开每份存档内全部 `dungeons`，跨作者排序并在展示层限制 24 份。
+- `src/DungeonShift/hooks/useDungeonWall.ts`：读取最近 6 位用户的最新存档，展开每份存档内全部 `dungeons`，跨作者排序并在展示层限制 24 份；基础卡片先返回，再异步补齐资料与每座地牢的累计挑战次数。
 - `src/shared/{runtime,save,leaderboard}`：标准平台桥、个人存档与成绩能力；不在游戏内重写桥协议。
 - `src/game-id.ts`：由同步脚本生成的永久 UUID `cb284177-9fff-4e40-9ed7-8381be7b365b`。
-- `doc/` 与 `_qa/{interaction-fix,intro-reveal-v2,camera-pinch-v2,death-video-v2,roster-solver-v1,roster-solver-v2}/`：需求、视觉、技术文档，以及入场镜头、死亡录像、完整路线拦截、角色选择、怪物预览与中英文 360×640 回归证据。
+- `doc/` 与 `_qa/{interaction-fix,intro-reveal-v2,camera-pinch-v2,death-video-v2,roster-solver-v1,roster-solver-v2,chase-range-wall-v1}/`：需求、视觉、技术文档，以及入场镜头、死亡录像、路线拦截、角色/怪物、移动范围、社区延迟、挑战计数和追击返回的 360×640 / 390×844 回归证据。
 
 ## 3. 核心模块
 
@@ -33,18 +33,18 @@
 - 建造预算：墙 1、尖刺 2、符文 2、守卫 3，总上限 12。替换已占用格会先返还原成本；移动唯一守卫会返还旧守卫成本，避免重复计费。
 - 建造状态：普通提示、验证成功和错误分别使用中性、绿色与红色方块；封路、最低 3 点必经伤害与异常巡逻使用独立中英文文案。Builder 先校验并禁用发布，`publishDungeon()` 保存前再次校验形成双重门禁；社区档案读取时只保留归一化成功且验证为 `ready` 的地图。新发布关卡统一使用 `SHIFT NN` 展示命名。
 - 角色名册：个人存档可选字段 `infiltrator` 保存 14 名人类之一；旧存档使用 `telegramId` 或稳定访客种子生成默认，开始页左右键写入本地镜像并持久化。`DungeonScene` 按 `BASE_CHARACTERS[infiltratorType]` 和 `MONSTERS[normalizeGuardType(guard.type)]` 创建正式模型，并暴露 `data-infiltrator-type / data-guard-type` 供回归测试。开始页换人通过 `infiltratorSwapRef` 只替换玩家 Group、骨骼和克隆材质，HUD/结算回调通过 ref 取最新函数，避免回调身份变化重建整个地牢；14 次连续热切换实测复用同一 Canvas，平均 142 ms。建造页守卫选择会立即更新已放置守卫；默认按建造序号循环六种怪物，第七座才重复。六种守卫共享判定数值，五种有腿怪使用 `userData.rig` 步态，幽灵保持原生漂浮滑行。
-- 3D 配置渲染：场景按地牢墙/机关集合创建模型；守卫在首尾巡逻点间插值，模型面部、移动、逻辑检测和视线锥统一使用本地 `+Z`，射线检测墙体后才判定暴露；移动和冲刺均检查配置中的墙体。
+- 3D 配置渲染：场景按地牢墙/机关集合创建模型；守卫的面部、移动、逻辑检测和视线锥统一使用本地 `+Z`，射线检测墙体后才判定暴露。常态在首尾巡逻点间插值；连续暴露 320 ms 后进入 `chase`，通过 5×7 BFS 沿未封墙地格追向 `lastSeenCell`，可见期间持续更新目标，失去视线 1.4 秒后进入 `return`，回到最近巡逻格再恢复 `patrol`。玩家每格 220 ms、追击守卫每格 340 ms；守卫命中后僵直 650 ms，玩家无敌 1 秒。移动和冲刺均检查地图边界与墙体。
 - 镜头与灯光：每局先进入 `introPending → intro → normal`，首帧着色器预热结束后再启动 1,600 ms 环绕，期间冻结计时与输入；`wallReveals` 为每个障碍保存底部锚定 Group、错峰进度和落尘触发位，使用一次 ease-out-back 从 `scale.y 0.02` 生长到 1；`propReveals` 包装尖刺、符文和宝物，以独立错峰从 `scale 0.05 / rotation.z -π/2` 翻转到稳定姿态并触发语义色尘屑。常规阶段以 110 ms 时间常数跟随玩家，焦点取玩家 x 的 78% 与 z 的 72%。主方向光、轮廓光和玩家冷青重点光同步移动；重点光强度 5.2、距离 8.0、衰减 1.4，半球环境光 0.62。双指距离控制 `userZoom` 0.72–1.55，松手后保持。
 - 相机触控：第一根手指只压亮候选格，`pointerup` 且位移小于 10 px 才移动；第二根手指落下立即取消候选并进入 pinch，避免缩放时误走。缩放值在死亡/复活演出结束后恢复，桌面键盘路径不受影响。
 - 材质分层：道路保留高粗糙度石材；障碍物整块墙身四侧与地基护轨共用深黑冷灰 `MeshPhysicalMaterial`（`0x272d31`、roughness 0.22、metalness 0.72、clearcoat 0.92），顶部独立使用浅暖灰哑光 `wallCapMaterial`（`0xb9b1a5`、roughness 0.78、metalness 0.06）。模型不再生成侧面贴片、玻璃片或白色高光条；尖刺使用更高金属度材质，符文晶体使用低粗糙度、`transmission: 0.22`、`ior: 1.45` 的透光材质。材质变化不改变墙体碰撞与视线遮挡。
-- 机制识别：相邻可走格使用运行时 `LineLoop` 方框；玩家、入口、宝物、守卫、尖刺和符文分别使用独立的脚环/菱形、四角柱、竖直信标、红环/感叹号、底板/高锥体、方环/悬浮晶体，颜色之外保留轮廓与高度差异。
+- 机制识别：相邻可走格使用约 0.12 opacity 的 `PlaneGeometry` 行动青铺底与 `LineLoop` 双层标记，按下时铺底提高到 0.24；只在 `cameraTransition === normal` 且玩家静止时显示，不可达格不作青色确认。玩家、入口、宝物、守卫、尖刺和符文分别使用独立的脚环/菱形、四角柱、竖直信标、红环/感叹号、底板/高锥体、方环/悬浮晶体，颜色之外保留轮廓与高度差异。
 - 生命与复活：普通受击扣 1 点生命；未携宝碰到守卫时只退回 `state.from` 的上一格，禁止瞬移入口，尖刺受击与携宝受击留在当前格。只有生命归零才进入死亡状态机：锁定玩家输入、移动与骨骼姿态，并把玩家独立克隆的材质切为高亮红色；守卫巡逻、陷阱、粒子和灯光继续更新。当前使用严格串行的 4,000 ms 时间轴：镜头先保持 500 ms，再用 1,200 ms 旋转推进至至少 3.8 倍；到位后隐藏玩家并爆出 14 个体素，进入 `burst-hold`，镜头保持死亡近景 400 ms，对应 CSS 红黑闸门 `.4s`。遮罩结束后才用 1,000 ms 将 `cameraFocus` 从死亡点插值到入口；玩家恢复原材质、在入口以尺度回弹出现，镜头再用 900 ms 旋转拉远并解锁输入。减少动态模式保持同样时长，只将环绕角从 `-0.46 / 0.32 rad` 降为 `-0.14 / 0.10 rad`。死亡、迁移和复活动画使用 `cameraTransitionElapsed += min(rawDt, 0.05) × 1000` 按渲染帧推进，不使用独立复活 `setTimeout`，避免低帧率越级；演出期间倒计时暂停但环境仍更新。场景通过 `data-damage-outcome` 区分 `guard-knockback / hit-in-place / lethal-cinematic`，回归测试必须覆盖最常见的守卫接触路径以及 `burst-hold → travel-to-spawn` 的非重叠顺序。
 - 通关结算：夺宝后 React HUD 在 100 ms 内把顶部普通说明替换为技能区上方的青色撤离任务条（17 px 主标题、13 px 辅助文字、入口 SVG），同时增强入口灯池并显示附着于玩家的青色出口箭头；主动进入入口后在下一动画帧触发结算。
 - 存档镜像：`useGameSave.savedData` 只负责首次种子；`saveMirror` 是后续唯一读源，每次发布保留完整对象并将个人地牢限制为最近 12 份。
-- 社区墙：网络层对每个 save 写 `for (const dungeon of save.dungeons || [])`；UI 把 `mine` 与社区结果合并，按 `dungeon.id` 去重，再按时间排序。发布后立即可见，不等待约 1 秒的云同步。
+- 社区墙：网络层对每个 save 写 `for (const dungeon of save.dungeons || [])`；UI 把 `mine` 与社区结果按 `dungeon.id` 去重并按时间排序。社区请求未完成时也直接渲染已有的 `mineEntries`，不再用 `loaded` 门禁隐藏乐观卡片；云端同 ID 条目返回后继承真实资料和累计挑战次数。发布后立即可见，不等待约 1 秒的云同步。
 - 跨用户界面：卡片和结算显示作者头像与名字；空头像显示首字母；本人显示“你 / YOU”；资料按钮 `stopPropagation()`，滚动列表卡片使用 `onClick`。
 - 排行榜身份：其他用户的头像与姓名整行可点击进入资料；本人行跳过头像和资料按钮，只显示强调色“你 / YOU”及成绩。
-- 平台事件：挑战他人地牢后给作者发送一次 `dungeon_escaped` 或 `dungeon_stopped`；不通知本人。成功分数提交最高分榜；仅当创造个人新纪录时，从最新榜单中找出刚超过的最高一人并发 `score_beat`。
+- 平台事件：开始挑战他人地牢时触发 `dungeon_play:<dungeon.id>`，平台统计的 `total_click_count` 作为社区卡片累计挑战次数；作者本人、样板和预览不计。挑战结算后给作者发送一次 `dungeon_escaped` 或 `dungeon_stopped`，开始时不发通知且不通知本人。成功分数提交最高分榜；仅当创造个人新纪录时，从最新榜单中找出刚超过的最高一人并发 `score_beat`。
 - 音频与多语言：音效失败静默降级；全部 DOM 文案经 `t()` 提供 zh/en，`game_locale` 可覆盖浏览器检测。
 - 评审稿还原：屏幕英文展示标题与中文无障碍名称使用独立 i18n key；HUD 在 React 中渲染 RUN 编号和 8 个离散警戒节点，技能同时显示 READY/USED；档案按预算渲染五段威胁条。结构基准为 `review/ui-pixel.html` REV 04。
 - 响应式：`100dvh`、安全区与最大宽 520 px；Canvas 按容器更新正交视锥；DOM 编辑器和档案内部适配，不使用整页缩放。360×640 的编辑器保持五列 44 px 以上触控格；中文功能文字不小于 11 px、英文像素功能标签不小于 9 px、正文保持 16 px，只有不承载状态的角落品牌水印为 7 px。撤离任务条在短屏固定于技能上方，不与按钮重叠。
@@ -59,8 +59,9 @@
 - 改潜入数值、计分和反馈：修改 `DungeonScene.tsx` 的状态与结算公式，并同步需求和音效文档。
 - 改入场、跟随、死亡或复活镜头：修改 `DungeonScene.tsx` 的 `cameraTransition`、`userZoom`、持续时间与正交 `camera.zoom`；同步 `requirements.md`、`visual.md`，并重跑 camera/pinch 与 death-video 浏览器回归。
 - 改撤离提示：修改 `DungeonShift.tsx` 的 `.ds-objective.is-extract` 结构、i18n 的 `extractTitle/extractHint` 和 `DungeonShift.less` 的短屏定位；复验 360×640 时任务条与技能区至少留 8 px 间距。
+- 改移动范围或守卫追击：修改 `DungeonScene.tsx` 的 `moveMarkers`、`shortestPath()`、`lastSeenCell`、`guardMode` 与移动/失联/僵直时间；同步常态 `.ds-objective__guide` 文案并重跑 chase-range-wall 浏览器回归，不能只提高巡逻插值速度冒充追击。
 - 改反光金属材质：修改 `DungeonScene.tsx` 的 `perimeterMat`、`wallCapMaterial`、`spikeMat` 与 `runeCrystal`；障碍墙身与地基护轨共用 `perimeterMat`，顶部必须维持独立浅色哑光材质，禁止重新添加侧板或高光贴条，并同时检查材质分界、Bloom 过曝和低端移动设备帧率。
-- 改墙/档案策略：个人输入上限在 `publishDungeon`，展示上限和跨用户解析在 `useDungeonWall.ts`；不得在网络层只取数组首项。
+- 改墙/档案策略：个人输入上限在 `publishDungeon`，展示上限、跨用户解析、资料与 `dungeon_play:<id>` 统计读取在 `useDungeonWall.ts`；乐观合并和加载门禁在 `Archive.tsx`，不得在网络层只取数组首项，也不得让 `loaded` 隐藏已存在的本人卡片。
 - 换 UI/字体/颜色：修改 `DungeonShift.less`、`main.tsx` 的 Fontsource 入口、`icons.tsx` 与 `doc/visual.md`；继续保持像素 UI / 清晰 3D 的边界、硬角图标、语义颜色和 44 px 目标。
 - 改平台能力：只使用 `src/shared` 标准模块；事件文案在 `DungeonShift.tsx`，永久 UUID 以 `games/games.json` 为唯一来源。
 - 发布：正式海报已经由平台 transit 生成并同步到 `public/poster.png`、游戏素材目录和 games repo 同名海报；生产构建、路径审计、UUID 校验及视觉发布候选复验已通过。游戏 Pages 与公开 games 清单已经上线，客户端平台数据库仍等待工作区外的迁移工具入库。

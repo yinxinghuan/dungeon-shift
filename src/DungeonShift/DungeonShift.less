@@ -108,8 +108,11 @@
 .ds-hud__alert-track i { flex: 1; height: 100%; background: #37212a; transition: background .12s steps(1,end); }
 .ds-hud__alert-track i.is-on { background: @magenta; box-shadow: inset 0 -2px 0 @magentaDark; }
 
-.ds-objective { position: absolute; top: calc(126px + env(safe-area-inset-top)); left: 50%; z-index: 5; max-width: calc(100% - 42px); transform: translateX(-50%); padding: 9px 12px 8px; color: @text; border: 2px solid @earthHi; border-left: 5px solid @amber; background: rgba(13,18,26,.95); box-shadow: 4px 4px 0 @void; font: 500 13px/1.4 @ui; text-align: center; white-space: normal; }
+.ds-objective { position: absolute; top: calc(126px + env(safe-area-inset-top)); left: 50%; z-index: 5; width: min(calc(100% - 28px),330px); max-width: none; transform: translateX(-50%); padding: 9px 12px 8px; color: @text; border: 2px solid @earthHi; border-left: 5px solid @amber; background: rgba(13,18,26,.95); box-shadow: 4px 4px 0 @void; font: 500 13px/1.4 @ui; text-align: center; white-space: normal; }
 .ds-objective.is-dash { color: @cyanHi; border-left-color: @cyan; }
+.ds-objective__guide { display: grid; gap: 2px; }
+.ds-objective__guide strong { color: @cyanHi; font-size: 13px; line-height: 1.3; font-weight: 700; }
+.ds-objective__guide small { color: #ef9a8e; font-size: 11px; line-height: 1.35; font-weight: 600; }
 .ds-objective.is-extract { top: auto; bottom: calc(112px + env(safe-area-inset-bottom)); width: min(calc(100% - 28px),360px); max-width: none; min-height: 74px; display: grid; grid-template-columns: 42px minmax(0,1fr); align-items: center; gap: 11px; padding: 10px 13px; color: #041015; border: 3px solid @cyanHi; border-left-width: 7px; background: @cyan; box-shadow: inset 2px 2px 0 rgba(255,255,255,.26), inset -3px -3px 0 #147f9d, 0 6px 0 #082b36; text-align: left; animation: ds-extract-cue-in .48s steps(6,end) both, ds-extract-cue-pulse .56s .54s steps(2,end) 2; }
 .ds-objective.is-extract > svg { width: 34px; height: 34px; color: #06242e; }
 .ds-objective.is-extract > span { min-width: 0; display: grid; gap: 4px; }
@@ -209,7 +212,10 @@
 .ds-dungeon-card { min-width: 0; display: grid; grid-template-columns: 104px minmax(0,1fr); gap: 11px; padding: 9px; border: 2px solid @border; background: @raised; box-shadow: inset 2px 2px 0 rgba(255,255,255,.025), 4px 4px 0 @void; clip-path: polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px)); cursor: pointer; }
 .ds-dungeon-card > .ds-map { width: 104px; height: 146px; padding: 3px; gap: 1px; border-width: 2px; box-shadow: none; }
 .ds-dungeon-card__body { min-width: 0; display: flex; flex-direction: column; }
-.ds-dungeon-card__body > small { color: @amberHi; font: 400 9px/1.35 @pixel; }
+.ds-dungeon-card__meta { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 7px; color: @amberHi; font: 400 9px/1.35 @pixel; }
+.ds-dungeon-card__meta > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-dungeon-card__meta > span:last-child { flex: 0 0 auto; color: @muted; }
+.ds-dungeon-card__meta b { color: @amberHi; font-weight: 400; }
 .ds-dungeon-card h3 { margin: 7px 0; color: @textStrong; font: 400 27px/.9 @display; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-dungeon-card__threat { display: flex; gap: 3px; margin-bottom: 7px; }
 .ds-dungeon-card__threat i { width: 9px; height: 8px; background: #3a2428; }
@@ -249,7 +255,7 @@
   .ds-actions span { font-family: @ui; font-size: 12px; font-weight: 600; }
   .ds-tabs button { font-family: @ui; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
   .ds-tools span { font-family: @ui; font-size: 11px; font-weight: 600; }
-  .ds-dungeon-card__body > small { font-family: @ui; font-size: 11px; font-weight: 600; }
+  .ds-dungeon-card__meta { font-family: @ui; font-size: 11px; font-weight: 600; }
   .ds-dungeon-card__raid { font-family: @ui; font-size: 11px; font-weight: 700; }
   .ds-alteru { font-size: 12px; }
   .ds-result__score span { font-family: @ui; font-size: 11px; font-weight: 600; }

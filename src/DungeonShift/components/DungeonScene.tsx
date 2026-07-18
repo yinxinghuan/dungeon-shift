@@ -10,7 +10,7 @@ import { MONSTERS } from '../engine/monsters.js';
 import { createParticles } from '../engine/particles.js';
 import { sfx } from '../audio';
 import { normalizeGuardType } from '../roster';
-import type { DungeonConfig, DungeonSceneHandle, HudState, InfiltratorType, RunResult } from '../types';
+import type { Cell, DungeonConfig, DungeonSceneHandle, HudState, InfiltratorType, RunResult } from '../types';
 import { COLS, ROWS, SAMPLE_DUNGEON, START, VAULT } from '../dungeons';
 
 interface Props {
@@ -75,6 +75,54 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const guardType = normalizeGuardType(dungeon.guards[0]?.type);
     const guardStart = guardRoute[0];
     const guardEnd = guardRoute[guardRoute.length - 1];
+    const routeCells: Cell[] = [];
+    const routeDc = Math.sign(guardEnd.c - guardStart.c), routeDr = Math.sign(guardEnd.r - guardStart.r);
+    for (let cursor = { ...guardStart };; cursor = { c: cursor.c + routeDc, r: cursor.r + routeDr }) {
+      routeCells.push(cursor);
+      if (cursor.c === guardEnd.c && cursor.r === guardEnd.r) break;
+    }
+
+    function nearestWalkableCell(position: THREE.Vector3): Cell {
+      let nearest = { ...START }, best = Infinity;
+      for (let r = 0; r < ROWS; r += 1) for (let c = 0; c < COLS; c += 1) {
+        if (BLOCKED.has(cellKey(c, r))) continue;
+        const distance = worldFor(c, r).distanceToSquared(position);
+        if (distance < best) { best = distance; nearest = { c, r }; }
+      }
+      return nearest;
+    }
+
+    function shortestPath(from: Cell, to: Cell): Cell[] {
+      const startKey = cellKey(from.c, from.r), targetKey = cellKey(to.c, to.r);
+      const queue: Cell[] = [{ ...from }];
+      const parent = new Map<string, string | null>([[startKey, null]]);
+      while (queue.length) {
+        const current = queue.shift()!;
+        const currentKey = cellKey(current.c, current.r);
+        if (currentKey === targetKey) break;
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const next = { c: current.c + dc, r: current.r + dr };
+          const nextKey = cellKey(next.c, next.r);
+          if (next.c < 0 || next.c >= COLS || next.r < 0 || next.r >= ROWS || BLOCKED.has(nextKey) || parent.has(nextKey)) continue;
+          parent.set(nextKey, currentKey); queue.push(next);
+        }
+      }
+      if (!parent.has(targetKey)) return [{ ...from }];
+      const path: Cell[] = [];
+      let cursor: string | null = targetKey;
+      while (cursor) {
+        const [c, r] = cursor.split(',').map(Number); path.unshift({ c, r }); cursor = parent.get(cursor) ?? null;
+      }
+      return path;
+    }
+
+    const nearestRouteCell = (from: Cell) => routeCells.reduce((best, cell) =>
+      Math.abs(cell.c - from.c) + Math.abs(cell.r - from.r) < Math.abs(best.c - from.c) + Math.abs(best.r - from.r) ? cell : best,
+    routeCells[0]);
+    const routeProgressFor = (cell: Cell) => {
+      const total = Math.max(1, Math.abs(guardEnd.c - guardStart.c) + Math.abs(guardEnd.r - guardStart.r));
+      return THREE.MathUtils.clamp((Math.abs(cell.c - guardStart.c) + Math.abs(cell.r - guardStart.r)) / total, 0, 1);
+    };
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
@@ -126,7 +174,8 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const selectable: THREE.Mesh[] = [];
     const visionBlockers: THREE.Mesh[] = [];
     const tiles = new Map<string, THREE.Mesh>();
-    const moveMarkers = new Map<string, THREE.LineLoop>();
+    const moveFillGeometry = new THREE.PlaneGeometry(0.78, 0.78);
+    const moveMarkers = new Map<string, { fill: THREE.Mesh; outline: THREE.LineLoop }>();
     for (let r = 0; r < ROWS; r += 1) {
       for (let c = 0; c < COLS; c += 1) {
         const keyCell = cellKey(c, r);
@@ -143,16 +192,23 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         }
         tile.receiveShadow = true;
         scene.add(tile); selectable.push(tile); tiles.set(keyCell, tile);
-        const moveMarker = new THREE.LineLoop(
+        const moveFill = new THREE.Mesh(
+          moveFillGeometry,
+          new THREE.MeshBasicMaterial({ color: 0x4cc7de, transparent: true, opacity: 0.12, depthWrite: false }),
+        );
+        moveFill.rotation.x = -Math.PI / 2;
+        moveFill.position.copy(tile.position); moveFill.position.y += 0.124;
+        moveFill.visible = false; moveFill.renderOrder = 2;
+        const moveOutline = new THREE.LineLoop(
           new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(-0.42, 0, -0.42), new THREE.Vector3(0.42, 0, -0.42),
             new THREE.Vector3(0.42, 0, 0.42), new THREE.Vector3(-0.42, 0, 0.42),
           ]),
           new THREE.LineBasicMaterial({ color: 0x83e2ee, transparent: true, opacity: 0.72, depthWrite: false }),
         );
-        moveMarker.position.copy(tile.position); moveMarker.position.y += 0.125;
-        moveMarker.visible = false; moveMarker.renderOrder = 3;
-        scene.add(moveMarker); moveMarkers.set(keyCell, moveMarker);
+        moveOutline.position.copy(tile.position); moveOutline.position.y += 0.13;
+        moveOutline.visible = false; moveOutline.renderOrder = 3;
+        scene.add(moveFill, moveOutline); moveMarkers.set(keyCell, { fill: moveFill, outline: moveOutline });
       }
     }
 
@@ -401,6 +457,8 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const cameraGoal = new THREE.Vector3();
     const deathHoldFocus = new THREE.Vector3();
     const deathSubjectFocus = new THREE.Vector3();
+    const guardStepFrom = new THREE.Vector3();
+    const guardStepTo = new THREE.Vector3();
     const spawnFocus = worldFor(START.c, START.r).multiply(new THREE.Vector3(0.78, 0, 0.72));
     spawnFocus.y = 0.1;
     const lightOffset = new THREE.Vector3();
@@ -412,11 +470,13 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       health: 3, alert: 0, hasLoot: false, smokeReady: true, dashReady: true, dashArmed: false,
       smokeUntil: 0, alarms: 0, timeLeft: 75, elapsed: 0, moving: false, moveT: 0,
       moveDuration: 0.22, current: { ...START }, from: { ...START }, target: { ...START },
-      guardProgress: 0, guardDir: 1, guardPause: 0.5, sightTime: 0, chaseUntil: 0,
+      guardProgress: 0, guardDir: 1, guardPause: 0.5, sightTime: 0, chaseUntil: 0, guardStunUntil: 0,
+      guardMode: 'patrol' as 'patrol' | 'chase' | 'return', guardCell: { ...guardStart }, guardNextCell: null as Cell | null, guardStepT: 1,
+      lastSeenCell: { ...START }, lastSeenAt: -Infinity,
       invulnerableUntil: 0, usedRunes: new Set<string>(), ended: false, freezeUntil: 0, shakeUntil: 0,
       respawning: false, cameraTransition: (active ? 'introPending' : 'normal') as 'normal' | 'introPending' | 'intro' | 'death' | 'revive', cameraTransitionAt: 0,
       cameraTransitionElapsed: 0, userZoom: 1, deathStartZoom: 1, deathPeakZoom: 3.8,
-      lastHud: 0, selectedTile: null as THREE.Mesh | null,
+      lastHud: 0, pressedTargetKey: null as string | null,
     };
     mount.dataset.effectActive = active ? 'true' : 'false';
     mount.dataset.initialCameraTransition = state.cameraTransition;
@@ -499,16 +559,29 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         respawn();
       }
       else if (reason === 'guard' && !state.hasLoot) {
+        state.guardStunUntil = state.elapsed + 0.65;
         const knockback = state.from.c === state.current.c && state.from.r === state.current.r ? state.current : state.from;
         state.current = { ...knockback }; state.target = { ...knockback }; state.from = { ...knockback }; state.moving = false;
         playerRoot.position.copy(worldFor(knockback.c, knockback.r)); playerRoot.position.y = 0.33;
         mount.dataset.damageOutcome = 'guard-knockback';
-      } else mount.dataset.damageOutcome = 'hit-in-place';
+      } else {
+        if (reason === 'guard') state.guardStunUntil = state.elapsed + 0.65;
+        mount.dataset.damageOutcome = 'hit-in-place';
+      }
     }
 
-    function triggerAlert(amount = 35) {
+    function startChase(duration: number, target = state.current) {
+      state.lastSeenCell = { ...target }; state.lastSeenAt = state.elapsed;
+      state.chaseUntil = Math.max(state.chaseUntil, state.elapsed + duration);
+      if (state.guardMode !== 'chase') {
+        state.guardMode = 'chase'; state.guardCell = nearestWalkableCell(guardRoot.position);
+        state.guardNextCell = null; state.guardStepT = 1;
+      }
+    }
+
+    function triggerAlert(amount = 35, chaseDuration = 1.4) {
       state.alert = Math.min(100, state.alert + amount); state.alarms += 1;
-      state.chaseUntil = state.elapsed + 2.5; state.freezeUntil = performance.now() + (reduceMotion ? 0 : 55);
+      startChase(chaseDuration); state.freezeUntil = performance.now() + (reduceMotion ? 0 : 55);
       state.shakeUntil = performance.now() + (reduceMotion ? 0 : 140);
       particles.burst(guardRoot.position.x, 1.55, guardRoot.position.z, 0xe36a58, { count: reduceMotion ? 3 : 6, speed: 1.1, up: 1.6, size: 0.1, life: 0.5, emissive: 0.45 });
       sfx.alert(); onHudRef.current(hudSnapshot());
@@ -520,14 +593,14 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       state.hasLoot = true; relic.visible = false;
       particles.burst(relic.position.x, 0.85, relic.position.z, 0xe7b95c, { count: reduceMotion ? 12 : 24, speed: 3.2, up: 3.2, size: 0.12, life: 0.7, emissive: 0.65 });
       addRing(relic.position, 0xffe2a0, 0.7); sfx.loot(); onHudRef.current(hudSnapshot());
-      state.chaseUntil = state.elapsed + 3.5;
+      startChase(3.5);
       entranceRing.scale.setScalar(1.34);
     }
 
     function resolveCell() {
       const keyCell = cellKey(state.current.c, state.current.r);
       if (spikeKeys.has(keyCell) && ((state.elapsed % 1.4) > 1.1)) hit('spike');
-      if (runeKeys.has(keyCell) && !state.usedRunes.has(keyCell)) { state.usedRunes.add(keyCell); const usedRune = runes.get(keyCell); if (usedRune) usedRune.visible = false; triggerAlert(45); }
+      if (runeKeys.has(keyCell) && !state.usedRunes.has(keyCell)) { state.usedRunes.add(keyCell); const usedRune = runes.get(keyCell); if (usedRune) usedRune.visible = false; triggerAlert(45, 3.5); }
       if (state.current.c === VAULT.c && state.current.r === VAULT.r) collectLoot();
       if (state.hasLoot && state.current.c === START.c && state.current.r === START.r) finish(true, 'escaped');
     }
@@ -535,7 +608,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     function tryMove(c: number, r: number) {
       if (!active || state.ended || state.respawning || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending' || state.moving) return;
       const dc = c - state.current.c, dr = r - state.current.r;
-      if (Math.abs(dc) + Math.abs(dr) !== 1 || BLOCKED.has(cellKey(c, r))) { sfx.reject(); return; }
+      if (!isReachableTarget(c, r)) { sfx.reject(); return; }
       let target = { c, r };
       if (state.dashArmed && state.dashReady) {
         const c2 = state.current.c + dc * 2, r2 = state.current.r + dr * 2;
@@ -548,6 +621,12 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       state.moveDuration = (Math.abs(target.c - state.current.c) + Math.abs(target.r - state.current.r)) > 1 ? 0.26 : 0.22;
       playerRoot.rotation.y = Math.atan2(target.c - state.current.c, target.r - state.current.r);
       sfx.move(); onHudRef.current(hudSnapshot());
+    }
+
+    function isReachableTarget(c: number, r: number) {
+      return c >= 0 && c < COLS && r >= 0 && r < ROWS
+        && Math.abs(c - state.current.c) + Math.abs(r - state.current.r) === 1
+        && !BLOCKED.has(cellKey(c, r));
     }
 
     actionsRef.current.useSmoke = () => {
@@ -588,17 +667,15 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       try { renderer.domElement.setPointerCapture?.(event.pointerId); } catch { /* Synthetic QA events have no native capture target. */ }
       if (activePointers.size >= 2) {
-        gestureUsedPinch = true; tapCandidate = null;
+        gestureUsedPinch = true; tapCandidate = null; state.pressedTargetKey = null;
         pinchStartDistance = Math.max(1, pointerDistance()); pinchStartZoom = state.userZoom;
         mount.dataset.pinch = 'active';
         return;
       }
       const hitTile = tileAt(event.clientX, event.clientY);
       if (!hitTile) return;
-      if (state.selectedTile) (state.selectedTile.material as THREE.MeshStandardMaterial).emissive.setHex(0x000000);
-      state.selectedTile = hitTile;
-      (hitTile.material as THREE.MeshStandardMaterial).emissive.setHex(0x174a45);
-      (hitTile.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.55;
+      const { c, r } = hitTile.userData.cell;
+      state.pressedTargetKey = isReachableTarget(c, r) ? cellKey(c, r) : null;
       tapCandidate = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, tile: hitTile };
     }
 
@@ -611,7 +688,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         state.userZoom = THREE.MathUtils.clamp(pinchStartZoom * (distance / Math.max(1, pinchStartDistance)), 0.72, 1.55);
         mount.dataset.userZoom = state.userZoom.toFixed(3);
       } else if (tapCandidate && Math.hypot(event.clientX - tapCandidate.startX, event.clientY - tapCandidate.startY) > 10) {
-        tapCandidate = null;
+        tapCandidate = null; state.pressedTargetKey = null;
       }
     }
 
@@ -619,7 +696,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       if (!activePointers.has(event.pointerId)) return;
       const shouldTap = activePointers.size === 1 && !gestureUsedPinch && tapCandidate?.pointerId === event.pointerId;
       const tile = shouldTap ? tapCandidate?.tile : null;
-      activePointers.delete(event.pointerId); tapCandidate = null;
+      activePointers.delete(event.pointerId); tapCandidate = null; state.pressedTargetKey = null;
       if (activePointers.size < 2) mount.dataset.pinch = 'idle';
       if (activePointers.size === 0) gestureUsedPinch = false;
       if (tile) { const { c, r } = tile.userData.cell; tryMove(c, r); }
@@ -724,16 +801,20 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       guardMarker.scale.setScalar(1 + Math.sin(visualT * 3.2) * 0.035);
 
       let visibleMoveTargets = 0;
-      moveMarkers.forEach((marker, keyCell) => {
+      moveMarkers.forEach(({ fill, outline }, keyCell) => {
         const [c, r] = keyCell.split(',').map(Number);
         const adjacent = Math.abs(c - state.current.c) + Math.abs(r - state.current.r) === 1;
-        marker.visible = active && !state.ended && !state.respawning && !state.moving && adjacent;
-        if (marker.visible) {
+        const visible = active && !state.ended && !state.respawning && !state.moving && state.cameraTransition === 'normal' && adjacent;
+        fill.visible = outline.visible = visible;
+        if (visible) {
           visibleMoveTargets += 1;
-          (marker.material as THREE.LineBasicMaterial).opacity = 0.58 + Math.sin(visualT * 5) * 0.12;
+          const pressed = state.pressedTargetKey === keyCell;
+          (fill.material as THREE.MeshBasicMaterial).opacity = pressed ? 0.24 : 0.115 + Math.sin(visualT * 3.6) * 0.012;
+          (outline.material as THREE.LineBasicMaterial).opacity = pressed ? 0.92 : 0.54 + Math.sin(visualT * 5) * 0.08;
         }
       });
       mount.dataset.moveTargets = String(visibleMoveTargets);
+      mount.dataset.moveTargetStyle = 'soft-fill-outline';
 
       if (active && !state.ended) {
         state.elapsed += dt;
@@ -760,22 +841,57 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
           }
         }
 
-        // Patrol from column 1 to 3 along row 3.
-        if (state.guardPause > 0) state.guardPause -= dt;
-        else {
-          const speed = state.elapsed < state.chaseUntil ? 1.55 : 1.05;
-          state.guardProgress += state.guardDir * speed * dt / Math.max(1, Math.abs(guardEnd.c - guardStart.c) + Math.abs(guardEnd.r - guardStart.r));
-          if (state.guardProgress >= 1) { state.guardProgress = 1; state.guardDir = -1; state.guardPause = 0.5; }
-          if (state.guardProgress <= 0) { state.guardProgress = 0; state.guardDir = 1; state.guardPause = 0.5; }
+        if (state.guardMode === 'chase' && state.elapsed >= state.chaseUntil) {
+          state.guardMode = 'return'; state.guardCell = nearestWalkableCell(guardRoot.position);
+          state.guardNextCell = null; state.guardStepT = 1;
         }
-        const patrolFrom = worldFor(guardStart.c, guardStart.r), patrolTo = worldFor(guardEnd.c, guardEnd.r);
-        guardRoot.position.lerpVectors(patrolFrom, patrolTo, state.guardProgress); guardRoot.position.y = 0.33 + Math.abs(Math.sin(visualT * (state.elapsed < state.chaseUntil ? 9 : 6))) * 0.035;
-        const patrolDx = (guardEnd.c - guardStart.c) * state.guardDir;
-        const patrolDz = (guardEnd.r - guardStart.r) * state.guardDir;
-        guardRoot.rotation.y = Math.atan2(patrolDx, patrolDz);
-        guardLight.intensity = state.elapsed < state.chaseUntil ? 2.4 : 0.8 + Math.sin(visualT * 2.6) * 0.12;
+
+        const guardStunned = state.elapsed < state.guardStunUntil;
+        if (state.guardMode !== 'patrol' && !guardStunned) {
+          if (state.guardStepT >= 1) {
+            if (state.guardNextCell) state.guardCell = { ...state.guardNextCell };
+            state.guardNextCell = null;
+            const target = state.guardMode === 'chase' ? state.lastSeenCell : nearestRouteCell(state.guardCell);
+            if (state.guardCell.c === target.c && state.guardCell.r === target.r) {
+              if (state.guardMode === 'return') {
+                state.guardMode = 'patrol'; state.guardProgress = routeProgressFor(target); state.guardPause = 0.2;
+              }
+            } else {
+              const next = shortestPath(state.guardCell, target)[1];
+              if (next) {
+                state.guardNextCell = { ...next }; state.guardStepT = 0;
+                guardStepFrom.copy(guardRoot.position); guardStepTo.copy(worldFor(next.c, next.r)); guardStepTo.y = 0.33;
+              }
+            }
+          }
+          if (state.guardMode !== 'patrol' && state.guardStepT < 1) {
+            state.guardStepT = Math.min(1, state.guardStepT + dt / (state.guardMode === 'chase' ? 0.34 : 0.42));
+            const eased = state.guardStepT * state.guardStepT * (3 - 2 * state.guardStepT);
+            guardRoot.position.lerpVectors(guardStepFrom, guardStepTo, eased);
+            guardRoot.position.y = 0.33 + Math.sin(state.guardStepT * Math.PI) * 0.06;
+            const direction = guardStepTo.clone().sub(guardStepFrom);
+            if (direction.lengthSq() > 0.001) guardRoot.rotation.y = Math.atan2(direction.x, direction.z);
+          }
+        }
+
+        if (state.guardMode === 'patrol') {
+          if (state.guardPause > 0) state.guardPause -= dt;
+          else {
+            state.guardProgress += state.guardDir * 1.05 * dt / Math.max(1, Math.abs(guardEnd.c - guardStart.c) + Math.abs(guardEnd.r - guardStart.r));
+            if (state.guardProgress >= 1) { state.guardProgress = 1; state.guardDir = -1; state.guardPause = 0.5; }
+            if (state.guardProgress <= 0) { state.guardProgress = 0; state.guardDir = 1; state.guardPause = 0.5; }
+          }
+          const patrolFrom = worldFor(guardStart.c, guardStart.r), patrolTo = worldFor(guardEnd.c, guardEnd.r);
+          guardRoot.position.lerpVectors(patrolFrom, patrolTo, state.guardProgress);
+          guardRoot.position.y = 0.33 + Math.abs(Math.sin(visualT * 6)) * 0.035;
+          guardRoot.rotation.y = Math.atan2((guardEnd.c - guardStart.c) * state.guardDir, (guardEnd.r - guardStart.r) * state.guardDir);
+          state.guardCell = nearestWalkableCell(guardRoot.position);
+        }
+
+        guardLight.intensity = state.guardMode === 'chase' ? 2.4 : state.guardMode === 'return' ? 1.35 : 0.8 + Math.sin(visualT * 2.6) * 0.12;
         if (guardRig) {
-          const gait = state.guardPause > 0 ? 0 : Math.sin(visualT * (state.elapsed < state.chaseUntil ? 10 : 7)) * 0.58;
+          const travelling = !guardStunned && (state.guardMode === 'patrol' ? state.guardPause <= 0 : state.guardStepT < 1);
+          const gait = travelling ? Math.sin(visualT * (state.guardMode === 'chase' ? 10 : 7)) * 0.58 : 0;
           guardRig.legL.rotation.x = gait; guardRig.legR.rotation.x = -gait;
           guardRig.armL.rotation.x = -gait * 0.55; guardRig.armR.rotation.x = gait * 0.55;
         }
@@ -791,16 +907,22 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         mount.dataset.guardSight = visible ? 'visible' : lineClear ? 'outside-cone' : 'blocked';
         if (visible) {
           state.sightTime += dt;
+          if (state.guardMode === 'chase') {
+            state.lastSeenCell = { ...state.current }; state.lastSeenAt = state.elapsed; state.chaseUntil = state.elapsed + 1.4;
+          }
           vision.material.opacity = 0.42 + Math.sin(visualT * 12) * 0.1;
           visionOutline.material.opacity = 0.92 + Math.sin(visualT * 12) * 0.08;
           alertMarker.visible = true; alertMarker.scale.setScalar(1 + Math.max(0, Math.sin(visualT * 12)) * 0.18);
           if (state.sightTime >= 0.32) { state.sightTime = -2.1; triggerAlert(35); }
         } else {
           state.sightTime = Math.max(0, state.sightTime - dt * 2); vision.material.opacity = 0.24;
-          visionOutline.material.opacity = 0.82; alertMarker.visible = state.elapsed < state.chaseUntil;
-          alertMarker.scale.setScalar(state.elapsed < state.chaseUntil ? 1 + Math.max(0, Math.sin(visualT * 10)) * 0.14 : 1);
+          visionOutline.material.opacity = 0.82; alertMarker.visible = state.guardMode !== 'patrol';
+          alertMarker.scale.setScalar(state.guardMode !== 'patrol' ? 1 + Math.max(0, Math.sin(visualT * 10)) * 0.14 : 1);
         }
-        if (distance < 0.52 && state.elapsed > state.smokeUntil) hit('guard');
+        if (distance < 0.52) hit('guard');
+        mount.dataset.guardMode = state.guardMode;
+        mount.dataset.guardLastSeen = `${state.lastSeenCell.c},${state.lastSeenCell.r}`;
+        mount.dataset.guardStunned = guardStunned ? 'true' : 'false';
 
         if (state.elapsed - state.lastHud > 0.1) { state.lastHud = state.elapsed; onHudRef.current(hudSnapshot()); }
       } else {

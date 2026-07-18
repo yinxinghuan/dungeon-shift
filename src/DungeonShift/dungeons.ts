@@ -27,6 +27,7 @@ export const SAMPLE_DUNGEON: DungeonConfig = {
 
 export const cellKey = ({ c, r }: Cell) => `${c},${r}`;
 export const sameCell = (a: Cell, b: Cell) => a.c === b.c && a.r === b.r;
+export const dungeonPlayEvent = (dungeonId: string) => `dungeon_play:${dungeonId}`;
 
 export type DungeonValidationCode = 'ready' | 'missing-guard' | 'blocked-route' | 'lethal-route' | 'invalid-guard';
 export interface DungeonValidation {
