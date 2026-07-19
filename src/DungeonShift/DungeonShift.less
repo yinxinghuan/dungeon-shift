@@ -118,11 +118,17 @@
 .ds-objective.is-extract > span { min-width: 0; display: grid; gap: 4px; }
 .ds-objective.is-extract strong { font-size: 17px; line-height: 1.2; font-weight: 700; }
 .ds-objective.is-extract small { color: #0a3c4b; font-size: 13px; line-height: 1.3; font-weight: 700; }
-.ds-actions { position: absolute; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom)); z-index: 7; display: flex; gap: 10px; transform: translateX(-50%); button { width: 82px; height: 62px; display: grid; grid-template-columns: 25px minmax(0,1fr); align-items: center; gap: 5px; padding: 0 8px; color: @text; border: 3px solid @earth; background: rgba(13,18,26,.97); box-shadow: inset 0 4px 0 rgba(255,255,255,.05), inset 0 -5px 0 #07090d, 0 5px 0 @void; clip-path: polygon(0 0,calc(100% - 7px) 0,100% 7px,100% 100%,7px 100%,0 calc(100% - 7px)); transition: transform .08s steps(1,end), box-shadow .08s steps(1,end); }
+.ds-actions { position: absolute; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom)); z-index: 7; display: flex; gap: 10px; transform: translateX(-50%); button { position: relative; width: 98px; height: 68px; display: grid; grid-template-columns: 27px minmax(0,1fr); align-items: center; gap: 7px; padding: 0 9px; color: @text; border: 3px solid @earth; background: rgba(13,18,26,.97); box-shadow: inset 0 4px 0 rgba(255,255,255,.05), inset 0 -5px 0 #07090d, 0 5px 0 @void; clip-path: polygon(0 0,calc(100% - 7px) 0,100% 7px,100% 100%,7px 100%,0 calc(100% - 7px)); transition: transform .08s steps(1,end), box-shadow .08s steps(1,end); }
   button:active:not(:disabled) { transform: translateY(3px); box-shadow: inset 2px 2px 0 rgba(0,0,0,.35), 0 2px 0 @void; }
   button.is-armed { color: @cyanHi; border-color: @cyan; background: #0b2b36; box-shadow: inset 2px 2px 0 #147f9d, 0 5px 0 #04161d; }
   button:disabled { color: #686e70; border-color: @borderSoft; background: rgba(12,16,22,.94); box-shadow: none; }
-  svg { width: 23px; color: @cyanHi; } span { min-width: 0; font: 400 9px/1.35 @pixel; } b { display: block; margin-top: 4px; color: #9ea39f; font: 400 9px/1.1 @pixel; }
+  svg { width: 25px; color: @cyanHi; }
+  .ds-action__copy { min-width: 0; display: grid; gap: 4px; text-align: left; }
+  .ds-action__copy strong { color: @textStrong; font: 400 9px/1.15 @pixel; white-space: nowrap; }
+  .ds-action__copy small { color: #9ea39f; font: 400 8px/1.1 @pixel; white-space: nowrap; }
+  .ds-action__count { position: absolute; top: 5px; right: 6px; min-width: 24px; height: 18px; display: grid; place-items: center; color: #06171d; background: @cyanHi; box-shadow: 2px 2px 0 #082b36; font: normal 400 12px/18px @pixel; }
+  button:disabled .ds-action__copy strong, button:disabled .ds-action__copy small { color: #777d7c; }
+  button:disabled .ds-action__count { color: #c3c6c2; background: #4c5253; box-shadow: 2px 2px 0 #171b1d; }
 }
 
 .ds-result { .pixel-surface(); position: absolute; z-index: 9; left: 18px; right: 18px; bottom: calc(28px + env(safe-area-inset-bottom)); padding: 19px 16px 16px; border: 3px solid @earthHi; clip-path: none; text-align: center; animation: ds-result-in .32s steps(4,end) both; }
@@ -252,7 +258,9 @@
   .ds-start__secondary .ds-button { font-size: 12px; }
   .ds-hud small, .ds-hud__alert > span { font-family: @ui; font-size: 10px; font-weight: 600; letter-spacing: .04em; }
   .ds-hud__loot { font-family: @ui; font-size: 10px; font-weight: 600; }
-  .ds-actions span { font-family: @ui; font-size: 12px; font-weight: 600; }
+  .ds-actions .ds-action__copy strong { font-family: @ui; font-size: 12px; font-weight: 700; }
+  .ds-actions .ds-action__copy small { font-family: @ui; font-size: 11px; font-weight: 600; }
+  .ds-actions .ds-action__count { font-family: @ui; font-size: 13px; font-weight: 800; }
   .ds-tabs button { font-family: @ui; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
   .ds-tools span { font-family: @ui; font-size: 11px; font-weight: 600; }
   .ds-dungeon-card__meta { font-family: @ui; font-size: 11px; font-weight: 600; }

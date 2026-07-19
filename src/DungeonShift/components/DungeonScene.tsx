@@ -174,8 +174,10 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const selectable: THREE.Mesh[] = [];
     const visionBlockers: THREE.Mesh[] = [];
     const tiles = new Map<string, THREE.Mesh>();
-    const moveFillGeometry = new THREE.PlaneGeometry(0.88, 0.88);
-    const moveMarkers = new Map<string, { fill: THREE.Mesh; outline: THREE.LineLoop }>();
+    const moveFillGeometry = new THREE.PlaneGeometry(0.94, 0.94);
+    const moveBorderHorizontal = new THREE.PlaneGeometry(0.98, 0.065);
+    const moveBorderVertical = new THREE.PlaneGeometry(0.065, 0.85);
+    const moveMarkers = new Map<string, { fill: THREE.Mesh; outline: THREE.Group; outlineMaterial: THREE.MeshBasicMaterial }>();
     for (let r = 0; r < ROWS; r += 1) {
       for (let c = 0; c < COLS; c += 1) {
         const keyCell = cellKey(c, r);
@@ -194,21 +196,24 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         scene.add(tile); selectable.push(tile); tiles.set(keyCell, tile);
         const moveFill = new THREE.Mesh(
           moveFillGeometry,
-          new THREE.MeshBasicMaterial({ color: 0x4cc7de, transparent: true, opacity: 0.24, depthWrite: false }),
+          new THREE.MeshBasicMaterial({ color: 0x1fa5c9, transparent: true, opacity: 0.58, depthWrite: false }),
         );
         moveFill.rotation.x = -Math.PI / 2;
         moveFill.position.copy(tile.position); moveFill.position.y += 0.124;
         moveFill.visible = false; moveFill.renderOrder = 2;
-        const moveOutline = new THREE.LineLoop(
-          new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(-0.46, 0, -0.46), new THREE.Vector3(0.46, 0, -0.46),
-            new THREE.Vector3(0.46, 0, 0.46), new THREE.Vector3(-0.46, 0, 0.46),
-          ]),
-          new THREE.LineBasicMaterial({ color: 0x83e2ee, transparent: true, opacity: 0.9, depthWrite: false }),
-        );
-        moveOutline.position.copy(tile.position); moveOutline.position.y += 0.13;
-        moveOutline.visible = false; moveOutline.renderOrder = 3;
-        scene.add(moveFill, moveOutline); moveMarkers.set(keyCell, { fill: moveFill, outline: moveOutline });
+        const moveOutlineMaterial = new THREE.MeshBasicMaterial({ color: 0x83e2ee, transparent: true, opacity: 0.98, depthWrite: false });
+        const moveOutline = new THREE.Group();
+        const topBorder = new THREE.Mesh(moveBorderHorizontal, moveOutlineMaterial);
+        const bottomBorder = new THREE.Mesh(moveBorderHorizontal, moveOutlineMaterial);
+        const leftBorder = new THREE.Mesh(moveBorderVertical, moveOutlineMaterial);
+        const rightBorder = new THREE.Mesh(moveBorderVertical, moveOutlineMaterial);
+        topBorder.position.y = 0.457; bottomBorder.position.y = -0.457;
+        leftBorder.position.x = -0.457; rightBorder.position.x = 0.457;
+        [topBorder, bottomBorder, leftBorder, rightBorder].forEach((border) => { border.renderOrder = 3; moveOutline.add(border); });
+        moveOutline.rotation.x = -Math.PI / 2;
+        moveOutline.position.copy(tile.position); moveOutline.position.y += 0.132;
+        moveOutline.visible = false;
+        scene.add(moveFill, moveOutline); moveMarkers.set(keyCell, { fill: moveFill, outline: moveOutline, outlineMaterial: moveOutlineMaterial });
       }
     }
 
@@ -824,7 +829,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       guardMarker.scale.setScalar(1 + Math.sin(visualT * 3.2) * 0.035);
 
       let visibleMoveTargets = 0;
-      moveMarkers.forEach(({ fill, outline }, keyCell) => {
+      moveMarkers.forEach(({ fill, outline, outlineMaterial }, keyCell) => {
         const [c, r] = keyCell.split(',').map(Number);
         const adjacent = Math.abs(c - state.current.c) + Math.abs(r - state.current.r) === 1;
         const visible = active && !state.ended && !state.respawning && !state.hitReaction && !state.moving && state.cameraTransition === 'normal' && adjacent;
@@ -832,12 +837,12 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         if (visible) {
           visibleMoveTargets += 1;
           const pressed = state.pressedTargetKey === keyCell;
-          (fill.material as THREE.MeshBasicMaterial).opacity = pressed ? 0.42 : 0.235 + Math.sin(visualT * 2.8) * 0.035;
-          (outline.material as THREE.LineBasicMaterial).opacity = pressed ? 1 : 0.9 + Math.sin(visualT * 3.8) * 0.06;
+          (fill.material as THREE.MeshBasicMaterial).opacity = pressed ? 0.82 : 0.58 + Math.sin(visualT * 2.8) * 0.06;
+          outlineMaterial.opacity = pressed ? 1 : 0.97 + Math.sin(visualT * 3.8) * 0.025;
         }
       });
       mount.dataset.moveTargets = String(visibleMoveTargets);
-      mount.dataset.moveTargetStyle = 'strong-fill-outline';
+      mount.dataset.moveTargetStyle = 'high-contrast-solid-frame';
 
       if (active && !state.ended) {
         state.elapsed += dt;

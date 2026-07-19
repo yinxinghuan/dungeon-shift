@@ -24,7 +24,7 @@
 - `src/DungeonShift/hooks/useDungeonWall.ts`：读取最近 6 位用户的最新存档，展开每份存档内全部 `dungeons`，跨作者排序并在展示层限制 24 份；基础卡片先返回，再异步补齐资料与每座地牢的累计挑战次数。
 - `src/shared/{runtime,save,leaderboard}`：标准平台桥、个人存档与成绩能力；不在游戏内重写桥协议。
 - `src/game-id.ts`：由同步脚本生成的永久 UUID `cb284177-9fff-4e40-9ed7-8381be7b365b`。
-- `doc/` 与 `_qa/{interaction-fix,intro-reveal-v2,camera-pinch-v2,death-video-v2,roster-solver-v1,roster-solver-v2,chase-range-wall-v1,hit-recoil-range-v1}/`：需求、视觉、技术文档，以及入场镜头、死亡录像、路线拦截、角色/怪物、移动范围、社区延迟、挑战计数、追击返回和非致命受击的 360×640 / 390×844 回归证据。
+- `doc/` 与 `_qa/{interaction-fix,intro-reveal-v2,camera-pinch-v2,death-video-v2,roster-solver-v1,roster-solver-v2,chase-range-wall-v1,hit-recoil-range-v1,range-skill-hud-v1}/`：需求、视觉、技术文档，以及入场镜头、死亡录像、路线拦截、角色/怪物、移动范围、技能次数、社区延迟、挑战计数、追击返回和非致命受击的 360×640 / 390×844 回归证据。
 
 ## 3. 核心模块
 
@@ -37,7 +37,8 @@
 - 镜头与灯光：每局先进入 `introPending → intro → normal`，首帧着色器预热结束后再启动 1,600 ms 环绕，期间冻结计时与输入；`wallReveals` 为每个障碍保存底部锚定 Group、错峰进度和落尘触发位，使用一次 ease-out-back 从 `scale.y 0.02` 生长到 1；`propReveals` 包装尖刺、符文和宝物，以独立错峰从 `scale 0.05 / rotation.z -π/2` 翻转到稳定姿态并触发语义色尘屑。常规阶段以 110 ms 时间常数跟随玩家，焦点取玩家 x 的 78% 与 z 的 72%。主方向光、轮廓光和玩家冷青重点光同步移动；重点光强度 5.2、距离 8.0、衰减 1.4，半球环境光 0.62。双指距离控制 `userZoom` 0.72–1.55，松手后保持。
 - 相机触控：第一根手指只压亮候选格，`pointerup` 且位移小于 10 px 才移动；第二根手指落下立即取消候选并进入 pinch，避免缩放时误走。缩放值在死亡/复活演出结束后恢复，桌面键盘路径不受影响。
 - 材质分层：道路保留高粗糙度石材；障碍物整块墙身四侧与地基护轨共用深黑冷灰 `MeshPhysicalMaterial`（`0x272d31`、roughness 0.22、metalness 0.72、clearcoat 0.92），顶部独立使用浅暖灰哑光 `wallCapMaterial`（`0xb9b1a5`、roughness 0.78、metalness 0.06）。模型不再生成侧面贴片、玻璃片或白色高光条；尖刺使用更高金属度材质，符文晶体使用低粗糙度、`transmission: 0.22`、`ior: 1.45` 的透光材质。材质变化不改变墙体碰撞与视线遮挡。
-- 机制识别：相邻可走格使用 0.88×0.88 世界单位的 `PlaneGeometry` 行动青铺底与 0.92×0.92 的 `LineLoop` 双层标记；铺底常态 opacity 在 0.20–0.27 之间呼吸、按下提高到 0.42，硬边常态约 0.90、按下为 1。只在 `cameraTransition === normal`、玩家静止且没有 `hitReaction` 时显示，不可达格不作青色确认。玩家、入口、宝物、守卫、尖刺和符文分别使用独立的脚环/菱形、四角柱、竖直信标、红环/感叹号、底板/高锥体、方环/悬浮晶体，颜色之外保留轮廓与高度差异。
+- 机制识别：相邻可走格使用 0.94×0.94 世界单位、饱和行动青 `PlaneGeometry` 实铺底，并用四片 `PlaneGeometry` 组成外宽 0.98、边条宽 0.065 世界单位的真实粗框；铺底常态 opacity 在 0.52–0.64 之间呼吸、按下提高到 0.82，硬边常态不低于 0.94、按下为 1。只在 `cameraTransition === normal`、玩家静止且没有 `hitReaction` 时显示，不可达格不作青色确认。玩家、入口、宝物、守卫、尖刺和符文分别使用独立的脚环/菱形、四角柱、竖直信标、红环/感叹号、底板/高锥体、方环/悬浮晶体，颜色之外保留轮廓与高度差异。
+- 技能资源：烟雾与冲刺在 Three.js 状态中分别由 `smokeReady / dashReady` 表示，每条生命各 1 次、没有冷却计时器；实际释放烟雾或完成冲刺后设为 `false`，死亡复活的 `respawn()` 统一恢复为 `true`。React 技能按钮通过 `data-uses-left="1|0"`、`data-cooldown="none"`、右上角 `×1 / ×0` 徽标和常驻“无冷却 / NO CD”同步显示，禁用态仍保留 `×0`。390×844 与 360×640 回归会实际消耗两项技能，并断言冲刺从 `(2,6)` 到 `(0,6)` 跨两格。
 - 非致命受击：守卫和尖刺共用 `hitReaction`，命中后立即停止普通移动并锁住移动/技能输入；保存碰撞瞬间世界坐标、退回目标格和危险源反方向。逐帧用 60 ms `impact`、300 ms `knockback`、120 ms `settle` 三段插值，把角色从碰撞点连续移回 `state.from`，完成后才同步 `current / target / from`。中途碰撞通过角色实际位置与当前格中心的距离识别，避免 `current === from` 时误走原地回弹并在最后一帧跳格；无合法上一格时只做 0.18 世界单位往返回弹。非致命路径只调用硬边冲击环和珊瑚色材质闪变，不调用 `particles.burst()`、不隐藏 `playerRoot`、不切相机；`data-damage-phase / data-damage-fx / data-player-visible` 用于帧序列回归。减少动态模式保留退回位移，取消压缩、弧线、后仰和震动。
 - 生命与复活：普通受击扣 1 点生命，守卫或尖刺的非致命命中退回上一格；守卫命中后僵直 650 ms，玩家保留 1 秒无敌。只有生命归零才进入死亡状态机：锁定玩家输入、移动与骨骼姿态，并把玩家独立克隆的材质切为高亮红色；守卫巡逻、陷阱、粒子和灯光继续更新。当前使用严格串行的 4,000 ms 时间轴：镜头先保持 500 ms，再用 1,200 ms 旋转推进至至少 3.8 倍；到位后隐藏玩家并爆出 14 个体素，进入 `burst-hold`，镜头保持死亡近景 400 ms，对应 CSS 红黑闸门 `.4s`。遮罩结束后才用 1,000 ms 将 `cameraFocus` 从死亡点插值到入口；玩家恢复原材质、在入口以尺度回弹出现，镜头再用 900 ms 旋转拉远并解锁输入。减少动态模式保持同样时长，只将环绕角从 `-0.46 / 0.32 rad` 降为 `-0.14 / 0.10 rad`。死亡、迁移和复活动画使用 `cameraTransitionElapsed += min(rawDt, 0.05) × 1000` 按渲染帧推进，不使用独立复活 `setTimeout`，避免低帧率越级；演出期间倒计时暂停但环境仍更新。场景通过 `data-damage-outcome` 区分 `guard-knockback-animated / spike-knockback-animated / *-recoil-animated / lethal-cinematic`；回归必须覆盖守卫、尖刺、减少动态和 `burst-hold → travel-to-spawn` 的非重叠顺序。
 - 通关结算：夺宝后 React HUD 在 100 ms 内把顶部普通说明替换为技能区上方的青色撤离任务条（17 px 主标题、13 px 辅助文字、入口 SVG），同时增强入口灯池并显示附着于玩家的青色出口箭头；主动进入入口后在下一动画帧触发结算。
@@ -47,7 +48,7 @@
 - 排行榜身份：其他用户的头像与姓名整行可点击进入资料；本人行跳过头像和资料按钮，只显示强调色“你 / YOU”及成绩。
 - 平台事件：开始挑战他人地牢时触发 `dungeon_play:<dungeon.id>`，平台统计的 `total_click_count` 作为社区卡片累计挑战次数；作者本人、样板和预览不计。挑战结算后给作者发送一次 `dungeon_escaped` 或 `dungeon_stopped`，开始时不发通知且不通知本人。成功分数提交最高分榜；仅当创造个人新纪录时，从最新榜单中找出刚超过的最高一人并发 `score_beat`。
 - 音频与多语言：音效失败静默降级；全部 DOM 文案经 `t()` 提供 zh/en，`game_locale` 可覆盖浏览器检测。
-- 评审稿还原：屏幕英文展示标题与中文无障碍名称使用独立 i18n key；HUD 在 React 中渲染 RUN 编号和 8 个离散警戒节点，技能同时显示 READY/USED；档案按预算渲染五段威胁条。结构基准为 `review/ui-pixel.html` REV 04。
+- 评审稿还原：屏幕英文展示标题与中文无障碍名称使用独立 i18n key；HUD 在 React 中渲染 RUN 编号和 8 个离散警戒节点，技能常驻显示剩余次数与“无冷却”，并用禁用态表达本条生命已经耗尽；档案按预算渲染五段威胁条。结构基准为 `review/ui-pixel.html` REV 04。
 - 响应式：`100dvh`、安全区与最大宽 520 px；Canvas 按容器更新正交视锥；DOM 编辑器和档案内部适配，不使用整页缩放。360×640 的编辑器保持五列 44 px 以上触控格；中文功能文字不小于 11 px、英文像素功能标签不小于 9 px、正文保持 16 px，只有不承载状态的角落品牌水印为 7 px。撤离任务条在短屏固定于技能上方，不与按钮重叠。
 
 ## 4. 扩展点
