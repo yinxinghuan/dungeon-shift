@@ -24,7 +24,7 @@
 - `src/DungeonShift/hooks/useDungeonWall.ts`：读取最近 6 位用户的最新存档，展开每份存档内全部 `dungeons`，跨作者排序并在展示层限制 24 份；基础卡片先返回，再异步补齐资料与每座地牢的累计挑战次数。
 - `src/shared/{runtime,save,leaderboard}`：标准平台桥、个人存档与成绩能力；不在游戏内重写桥协议。
 - `src/game-id.ts`：由同步脚本生成的永久 UUID `cb284177-9fff-4e40-9ed7-8381be7b365b`。
-- `doc/` 与 `_qa/{interaction-fix,intro-reveal-v2,camera-pinch-v2,death-video-v2,roster-solver-v1,roster-solver-v2,chase-range-wall-v1}/`：需求、视觉、技术文档，以及入场镜头、死亡录像、路线拦截、角色/怪物、移动范围、社区延迟、挑战计数和追击返回的 360×640 / 390×844 回归证据。
+- `doc/` 与 `_qa/{interaction-fix,intro-reveal-v2,camera-pinch-v2,death-video-v2,roster-solver-v1,roster-solver-v2,chase-range-wall-v1,hit-recoil-range-v1}/`：需求、视觉、技术文档，以及入场镜头、死亡录像、路线拦截、角色/怪物、移动范围、社区延迟、挑战计数、追击返回和非致命受击的 360×640 / 390×844 回归证据。
 
 ## 3. 核心模块
 
@@ -37,8 +37,9 @@
 - 镜头与灯光：每局先进入 `introPending → intro → normal`，首帧着色器预热结束后再启动 1,600 ms 环绕，期间冻结计时与输入；`wallReveals` 为每个障碍保存底部锚定 Group、错峰进度和落尘触发位，使用一次 ease-out-back 从 `scale.y 0.02` 生长到 1；`propReveals` 包装尖刺、符文和宝物，以独立错峰从 `scale 0.05 / rotation.z -π/2` 翻转到稳定姿态并触发语义色尘屑。常规阶段以 110 ms 时间常数跟随玩家，焦点取玩家 x 的 78% 与 z 的 72%。主方向光、轮廓光和玩家冷青重点光同步移动；重点光强度 5.2、距离 8.0、衰减 1.4，半球环境光 0.62。双指距离控制 `userZoom` 0.72–1.55，松手后保持。
 - 相机触控：第一根手指只压亮候选格，`pointerup` 且位移小于 10 px 才移动；第二根手指落下立即取消候选并进入 pinch，避免缩放时误走。缩放值在死亡/复活演出结束后恢复，桌面键盘路径不受影响。
 - 材质分层：道路保留高粗糙度石材；障碍物整块墙身四侧与地基护轨共用深黑冷灰 `MeshPhysicalMaterial`（`0x272d31`、roughness 0.22、metalness 0.72、clearcoat 0.92），顶部独立使用浅暖灰哑光 `wallCapMaterial`（`0xb9b1a5`、roughness 0.78、metalness 0.06）。模型不再生成侧面贴片、玻璃片或白色高光条；尖刺使用更高金属度材质，符文晶体使用低粗糙度、`transmission: 0.22`、`ior: 1.45` 的透光材质。材质变化不改变墙体碰撞与视线遮挡。
-- 机制识别：相邻可走格使用约 0.12 opacity 的 `PlaneGeometry` 行动青铺底与 `LineLoop` 双层标记，按下时铺底提高到 0.24；只在 `cameraTransition === normal` 且玩家静止时显示，不可达格不作青色确认。玩家、入口、宝物、守卫、尖刺和符文分别使用独立的脚环/菱形、四角柱、竖直信标、红环/感叹号、底板/高锥体、方环/悬浮晶体，颜色之外保留轮廓与高度差异。
-- 生命与复活：普通受击扣 1 点生命；未携宝碰到守卫时只退回 `state.from` 的上一格，禁止瞬移入口，尖刺受击与携宝受击留在当前格。只有生命归零才进入死亡状态机：锁定玩家输入、移动与骨骼姿态，并把玩家独立克隆的材质切为高亮红色；守卫巡逻、陷阱、粒子和灯光继续更新。当前使用严格串行的 4,000 ms 时间轴：镜头先保持 500 ms，再用 1,200 ms 旋转推进至至少 3.8 倍；到位后隐藏玩家并爆出 14 个体素，进入 `burst-hold`，镜头保持死亡近景 400 ms，对应 CSS 红黑闸门 `.4s`。遮罩结束后才用 1,000 ms 将 `cameraFocus` 从死亡点插值到入口；玩家恢复原材质、在入口以尺度回弹出现，镜头再用 900 ms 旋转拉远并解锁输入。减少动态模式保持同样时长，只将环绕角从 `-0.46 / 0.32 rad` 降为 `-0.14 / 0.10 rad`。死亡、迁移和复活动画使用 `cameraTransitionElapsed += min(rawDt, 0.05) × 1000` 按渲染帧推进，不使用独立复活 `setTimeout`，避免低帧率越级；演出期间倒计时暂停但环境仍更新。场景通过 `data-damage-outcome` 区分 `guard-knockback / hit-in-place / lethal-cinematic`，回归测试必须覆盖最常见的守卫接触路径以及 `burst-hold → travel-to-spawn` 的非重叠顺序。
+- 机制识别：相邻可走格使用 0.88×0.88 世界单位的 `PlaneGeometry` 行动青铺底与 0.92×0.92 的 `LineLoop` 双层标记；铺底常态 opacity 在 0.20–0.27 之间呼吸、按下提高到 0.42，硬边常态约 0.90、按下为 1。只在 `cameraTransition === normal`、玩家静止且没有 `hitReaction` 时显示，不可达格不作青色确认。玩家、入口、宝物、守卫、尖刺和符文分别使用独立的脚环/菱形、四角柱、竖直信标、红环/感叹号、底板/高锥体、方环/悬浮晶体，颜色之外保留轮廓与高度差异。
+- 非致命受击：守卫和尖刺共用 `hitReaction`，命中后立即停止普通移动并锁住移动/技能输入；保存碰撞瞬间世界坐标、退回目标格和危险源反方向。逐帧用 60 ms `impact`、300 ms `knockback`、120 ms `settle` 三段插值，把角色从碰撞点连续移回 `state.from`，完成后才同步 `current / target / from`。中途碰撞通过角色实际位置与当前格中心的距离识别，避免 `current === from` 时误走原地回弹并在最后一帧跳格；无合法上一格时只做 0.18 世界单位往返回弹。非致命路径只调用硬边冲击环和珊瑚色材质闪变，不调用 `particles.burst()`、不隐藏 `playerRoot`、不切相机；`data-damage-phase / data-damage-fx / data-player-visible` 用于帧序列回归。减少动态模式保留退回位移，取消压缩、弧线、后仰和震动。
+- 生命与复活：普通受击扣 1 点生命，守卫或尖刺的非致命命中退回上一格；守卫命中后僵直 650 ms，玩家保留 1 秒无敌。只有生命归零才进入死亡状态机：锁定玩家输入、移动与骨骼姿态，并把玩家独立克隆的材质切为高亮红色；守卫巡逻、陷阱、粒子和灯光继续更新。当前使用严格串行的 4,000 ms 时间轴：镜头先保持 500 ms，再用 1,200 ms 旋转推进至至少 3.8 倍；到位后隐藏玩家并爆出 14 个体素，进入 `burst-hold`，镜头保持死亡近景 400 ms，对应 CSS 红黑闸门 `.4s`。遮罩结束后才用 1,000 ms 将 `cameraFocus` 从死亡点插值到入口；玩家恢复原材质、在入口以尺度回弹出现，镜头再用 900 ms 旋转拉远并解锁输入。减少动态模式保持同样时长，只将环绕角从 `-0.46 / 0.32 rad` 降为 `-0.14 / 0.10 rad`。死亡、迁移和复活动画使用 `cameraTransitionElapsed += min(rawDt, 0.05) × 1000` 按渲染帧推进，不使用独立复活 `setTimeout`，避免低帧率越级；演出期间倒计时暂停但环境仍更新。场景通过 `data-damage-outcome` 区分 `guard-knockback-animated / spike-knockback-animated / *-recoil-animated / lethal-cinematic`；回归必须覆盖守卫、尖刺、减少动态和 `burst-hold → travel-to-spawn` 的非重叠顺序。
 - 通关结算：夺宝后 React HUD 在 100 ms 内把顶部普通说明替换为技能区上方的青色撤离任务条（17 px 主标题、13 px 辅助文字、入口 SVG），同时增强入口灯池并显示附着于玩家的青色出口箭头；主动进入入口后在下一动画帧触发结算。
 - 存档镜像：`useGameSave.savedData` 只负责首次种子；`saveMirror` 是后续唯一读源，每次发布保留完整对象并将个人地牢限制为最近 12 份。
 - 社区墙：网络层对每个 save 写 `for (const dungeon of save.dungeons || [])`；UI 把 `mine` 与社区结果按 `dungeon.id` 去重并按时间排序。社区请求未完成时也直接渲染已有的 `mineEntries`，不再用 `loaded` 门禁隐藏乐观卡片；云端同 ID 条目返回后继承真实资料和累计挑战次数。发布后立即可见，不等待约 1 秒的云同步。
@@ -59,7 +60,7 @@
 - 改潜入数值、计分和反馈：修改 `DungeonScene.tsx` 的状态与结算公式，并同步需求和音效文档。
 - 改入场、跟随、死亡或复活镜头：修改 `DungeonScene.tsx` 的 `cameraTransition`、`userZoom`、持续时间与正交 `camera.zoom`；同步 `requirements.md`、`visual.md`，并重跑 camera/pinch 与 death-video 浏览器回归。
 - 改撤离提示：修改 `DungeonShift.tsx` 的 `.ds-objective.is-extract` 结构、i18n 的 `extractTitle/extractHint` 和 `DungeonShift.less` 的短屏定位；复验 360×640 时任务条与技能区至少留 8 px 间距。
-- 改移动范围或守卫追击：修改 `DungeonScene.tsx` 的 `moveMarkers`、`shortestPath()`、`lastSeenCell`、`guardMode` 与移动/失联/僵直时间；同步常态 `.ds-objective__guide` 文案并重跑 chase-range-wall 浏览器回归，不能只提高巡逻插值速度冒充追击。
+- 改移动范围、受击退回或守卫追击：修改 `DungeonScene.tsx` 的 `moveMarkers`、`hitReaction`、`shortestPath()`、`lastSeenCell`、`guardMode` 与移动/失联/僵直时间；同步常态 `.ds-objective__guide` 文案并重跑 hit-recoil-range、spike-recoil、guard-death 浏览器回归，不能让非致命路径调用死亡碎裂或隐藏角色，也不能只提高巡逻插值速度冒充追击。
 - 改反光金属材质：修改 `DungeonScene.tsx` 的 `perimeterMat`、`wallCapMaterial`、`spikeMat` 与 `runeCrystal`；障碍墙身与地基护轨共用 `perimeterMat`，顶部必须维持独立浅色哑光材质，禁止重新添加侧板或高光贴条，并同时检查材质分界、Bloom 过曝和低端移动设备帧率。
 - 改墙/档案策略：个人输入上限在 `publishDungeon`，展示上限、跨用户解析、资料与 `dungeon_play:<id>` 统计读取在 `useDungeonWall.ts`；乐观合并和加载门禁在 `Archive.tsx`，不得在网络层只取数组首项，也不得让 `loaded` 隐藏已存在的本人卡片。
 - 换 UI/字体/颜色：修改 `DungeonShift.less`、`main.tsx` 的 Fontsource 入口、`icons.tsx` 与 `doc/visual.md`；继续保持像素 UI / 清晰 3D 的边界、硬角图标、语义颜色和 44 px 目标。

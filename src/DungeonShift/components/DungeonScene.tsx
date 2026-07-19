@@ -174,7 +174,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     const selectable: THREE.Mesh[] = [];
     const visionBlockers: THREE.Mesh[] = [];
     const tiles = new Map<string, THREE.Mesh>();
-    const moveFillGeometry = new THREE.PlaneGeometry(0.78, 0.78);
+    const moveFillGeometry = new THREE.PlaneGeometry(0.88, 0.88);
     const moveMarkers = new Map<string, { fill: THREE.Mesh; outline: THREE.LineLoop }>();
     for (let r = 0; r < ROWS; r += 1) {
       for (let c = 0; c < COLS; c += 1) {
@@ -194,17 +194,17 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         scene.add(tile); selectable.push(tile); tiles.set(keyCell, tile);
         const moveFill = new THREE.Mesh(
           moveFillGeometry,
-          new THREE.MeshBasicMaterial({ color: 0x4cc7de, transparent: true, opacity: 0.12, depthWrite: false }),
+          new THREE.MeshBasicMaterial({ color: 0x4cc7de, transparent: true, opacity: 0.24, depthWrite: false }),
         );
         moveFill.rotation.x = -Math.PI / 2;
         moveFill.position.copy(tile.position); moveFill.position.y += 0.124;
         moveFill.visible = false; moveFill.renderOrder = 2;
         const moveOutline = new THREE.LineLoop(
           new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(-0.42, 0, -0.42), new THREE.Vector3(0.42, 0, -0.42),
-            new THREE.Vector3(0.42, 0, 0.42), new THREE.Vector3(-0.42, 0, 0.42),
+            new THREE.Vector3(-0.46, 0, -0.46), new THREE.Vector3(0.46, 0, -0.46),
+            new THREE.Vector3(0.46, 0, 0.46), new THREE.Vector3(-0.46, 0, 0.46),
           ]),
-          new THREE.LineBasicMaterial({ color: 0x83e2ee, transparent: true, opacity: 0.72, depthWrite: false }),
+          new THREE.LineBasicMaterial({ color: 0x83e2ee, transparent: true, opacity: 0.9, depthWrite: false }),
         );
         moveOutline.position.copy(tile.position); moveOutline.position.y += 0.13;
         moveOutline.visible = false; moveOutline.renderOrder = 3;
@@ -399,6 +399,15 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       playerFocusLight.intensity = enabled ? 8.2 : 5.2;
       mount.dataset.playerTint = enabled ? 'warning-red' : 'normal';
     }
+    function setPlayerHitTint(enabled: boolean) {
+      playerMaterialStates.forEach(({ material, color, emissive, emissiveIntensity }) => {
+        material.color.setHex(enabled ? 0xffb09b : color);
+        material.emissive.setHex(enabled ? 0xff5a47 : emissive);
+        material.emissiveIntensity = enabled ? 0.7 : emissiveIntensity;
+      });
+      (playerMarker.material as THREE.MeshBasicMaterial).color.setHex(enabled ? 0xff8b78 : 0x8ae1d8);
+      mount.dataset.playerTint = enabled ? 'impact-coral' : 'normal';
+    }
 
     const guardRoot = new THREE.Group();
     const guardModel = normalizeModel(MONSTERS[guardType](), 1.03);
@@ -474,6 +483,10 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       guardMode: 'patrol' as 'patrol' | 'chase' | 'return', guardCell: { ...guardStart }, guardNextCell: null as Cell | null, guardStepT: 1,
       lastSeenCell: { ...START }, lastSeenAt: -Infinity,
       invulnerableUntil: 0, usedRunes: new Set<string>(), ended: false, freezeUntil: 0, shakeUntil: 0,
+      hitReaction: null as null | {
+        elapsed: number; startPosition: THREE.Vector3; destination: THREE.Vector3; targetCell: Cell;
+        recoilDirection: THREE.Vector3; retreatsCell: boolean;
+      },
       respawning: false, cameraTransition: (active ? 'introPending' : 'normal') as 'normal' | 'introPending' | 'intro' | 'death' | 'revive', cameraTransitionAt: 0,
       cameraTransitionElapsed: 0, userZoom: 1, deathStartZoom: 1, deathPeakZoom: 3.8,
       lastHud: 0, pressedTargetKey: null as string | null,
@@ -552,22 +565,32 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       state.health -= 1; state.invulnerableUntil = state.elapsed + 1.0;
       state.freezeUntil = performance.now() + (reduceMotion ? 0 : 55);
       state.shakeUntil = performance.now() + (reduceMotion ? 0 : 140);
-      if (state.health > 0) particles.burst(playerRoot.position.x, 0.7, playerRoot.position.z, 0xe36a58, { count: reduceMotion ? 5 : 10, speed: 2.3, up: 2.1, size: 0.09, life: 0.52, emissive: 0.25 });
       sfx.hit(); onHudRef.current(hudSnapshot());
       if (state.health <= 0) {
         mount.dataset.damageOutcome = 'lethal-cinematic';
         respawn();
+        return;
       }
-      else if (reason === 'guard' && !state.hasLoot) {
-        state.guardStunUntil = state.elapsed + 0.65;
-        const knockback = state.from.c === state.current.c && state.from.r === state.current.r ? state.current : state.from;
-        state.current = { ...knockback }; state.target = { ...knockback }; state.from = { ...knockback }; state.moving = false;
-        playerRoot.position.copy(worldFor(knockback.c, knockback.r)); playerRoot.position.y = 0.33;
-        mount.dataset.damageOutcome = 'guard-knockback';
-      } else {
-        if (reason === 'guard') state.guardStunUntil = state.elapsed + 0.65;
-        mount.dataset.damageOutcome = 'hit-in-place';
-      }
+      if (reason === 'guard') state.guardStunUntil = state.elapsed + 0.65;
+      const startPosition = playerRoot.position.clone();
+      const currentPosition = worldFor(state.current.c, state.current.r);
+      const interruptedMidMove = state.moving && startPosition.distanceTo(currentPosition) > 0.12;
+      const previousIsDifferent = state.from.c !== state.current.c || state.from.r !== state.current.r;
+      const previousIsWalkable = state.from.c >= 0 && state.from.c < COLS && state.from.r >= 0 && state.from.r < ROWS && !BLOCKED.has(cellKey(state.from.c, state.from.r));
+      const previousWouldAutoExit = state.hasLoot && state.from.c === START.c && state.from.r === START.r;
+      const retreatsCell = interruptedMidMove || (previousIsDifferent && previousIsWalkable && !previousWouldAutoExit);
+      const targetCell = retreatsCell ? { ...state.from } : { ...state.current };
+      const destination = worldFor(targetCell.c, targetCell.r);
+      const recoilDirection = reason === 'guard'
+        ? startPosition.clone().sub(guardRoot.position).setY(0).normalize()
+        : startPosition.clone().sub(worldFor(state.current.c, state.current.r)).setY(0).normalize();
+      if (recoilDirection.lengthSq() < 0.01) recoilDirection.set(0, 0, 1).applyQuaternion(playerRoot.quaternion);
+      state.moving = false; state.pressedTargetKey = null;
+      state.hitReaction = { elapsed: 0, startPosition, destination, targetCell, recoilDirection, retreatsCell };
+      setPlayerHitTint(true); addRing(playerRoot.position, 0xff8b78, 0.3);
+      mount.dataset.damageOutcome = retreatsCell ? `${reason}-knockback-animated` : `${reason}-recoil-animated`;
+      mount.dataset.damagePhase = 'impact';
+      mount.dataset.damageFx = 'impact-ring-no-fragments';
     }
 
     function startChase(duration: number, target = state.current) {
@@ -606,7 +629,7 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     }
 
     function tryMove(c: number, r: number) {
-      if (!active || state.ended || state.respawning || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending' || state.moving) return;
+      if (!active || state.ended || state.respawning || state.hitReaction || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending' || state.moving) return;
       const dc = c - state.current.c, dr = r - state.current.r;
       if (!isReachableTarget(c, r)) { sfx.reject(); return; }
       let target = { c, r };
@@ -630,13 +653,13 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
     }
 
     actionsRef.current.useSmoke = () => {
-      if (!active || !state.smokeReady || state.ended || state.respawning || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') return;
+      if (!active || !state.smokeReady || state.ended || state.respawning || state.hitReaction || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') return;
       state.smokeReady = false; state.smokeUntil = state.elapsed + 3;
       for (let i = 0; i < 3; i += 1) particles.puffFx(playerRoot.position.x, 0.45 + i * 0.12, playerRoot.position.z, { count: reduceMotion ? 3 : 6, color: 0xaaa59c, size: 0.22, life: 0.8, grav: 0.3 });
       sfx.smoke(); onHudRef.current(hudSnapshot());
     };
     actionsRef.current.armDash = () => {
-      if (!active || !state.dashReady || state.ended || state.respawning || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') return;
+      if (!active || !state.dashReady || state.ended || state.respawning || state.hitReaction || state.cameraTransition === 'intro' || state.cameraTransition === 'introPending') return;
       state.dashArmed = !state.dashArmed; onHudRef.current(hudSnapshot());
       addRing(playerRoot.position, 0x3fb6ac, 0.36);
     };
@@ -804,17 +827,17 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       moveMarkers.forEach(({ fill, outline }, keyCell) => {
         const [c, r] = keyCell.split(',').map(Number);
         const adjacent = Math.abs(c - state.current.c) + Math.abs(r - state.current.r) === 1;
-        const visible = active && !state.ended && !state.respawning && !state.moving && state.cameraTransition === 'normal' && adjacent;
+        const visible = active && !state.ended && !state.respawning && !state.hitReaction && !state.moving && state.cameraTransition === 'normal' && adjacent;
         fill.visible = outline.visible = visible;
         if (visible) {
           visibleMoveTargets += 1;
           const pressed = state.pressedTargetKey === keyCell;
-          (fill.material as THREE.MeshBasicMaterial).opacity = pressed ? 0.24 : 0.115 + Math.sin(visualT * 3.6) * 0.012;
-          (outline.material as THREE.LineBasicMaterial).opacity = pressed ? 0.92 : 0.54 + Math.sin(visualT * 5) * 0.08;
+          (fill.material as THREE.MeshBasicMaterial).opacity = pressed ? 0.42 : 0.235 + Math.sin(visualT * 2.8) * 0.035;
+          (outline.material as THREE.LineBasicMaterial).opacity = pressed ? 1 : 0.9 + Math.sin(visualT * 3.8) * 0.06;
         }
       });
       mount.dataset.moveTargets = String(visibleMoveTargets);
-      mount.dataset.moveTargetStyle = 'soft-fill-outline';
+      mount.dataset.moveTargetStyle = 'strong-fill-outline';
 
       if (active && !state.ended) {
         state.elapsed += dt;
@@ -822,7 +845,40 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
         state.alert = Math.max(0, state.alert - dt * 8);
         if (!state.respawning && state.timeLeft <= 0) finish(false, 'timeout');
 
-        if (state.moving) {
+        if (state.hitReaction) {
+          const reaction = state.hitReaction;
+          reaction.elapsed += rawDt;
+          const impactEnd = 0.06;
+          const retreatEnd = 0.36;
+          const total = 0.48;
+          if (reaction.elapsed < impactEnd) {
+            const p = reaction.elapsed / impactEnd;
+            playerRoot.position.copy(reaction.startPosition);
+            if (!reduceMotion) playerRoot.scale.set(1.06 - p * 0.12, 0.88 + p * 0.08, 1.06 - p * 0.12);
+            mount.dataset.damagePhase = 'impact';
+          } else if (reaction.elapsed < retreatEnd) {
+            const p = THREE.MathUtils.clamp((reaction.elapsed - impactEnd) / (retreatEnd - impactEnd), 0, 1);
+            const eased = p * p * (3 - 2 * p);
+            if (reaction.retreatsCell) playerRoot.position.lerpVectors(reaction.startPosition, reaction.destination, eased);
+            else playerRoot.position.copy(reaction.startPosition).addScaledVector(reaction.recoilDirection, Math.sin(p * Math.PI) * 0.18);
+            playerRoot.position.y = 0.33 + (reduceMotion ? 0 : Math.sin(p * Math.PI) * 0.16);
+            playerRoot.scale.setScalar(1);
+            if (!reduceMotion) playerRoot.rotation.z = Math.sin(p * Math.PI) * -0.17;
+            if (p > 0.45) setPlayerHitTint(false);
+            mount.dataset.damagePhase = 'knockback';
+          } else if (reaction.elapsed < total) {
+            const p = THREE.MathUtils.clamp((reaction.elapsed - retreatEnd) / (total - retreatEnd), 0, 1);
+            playerRoot.position.copy(reaction.destination); playerRoot.position.y = 0.33;
+            playerRoot.rotation.z = reduceMotion ? 0 : Math.sin(p * Math.PI) * 0.055;
+            playerRoot.scale.set(1 + Math.sin(p * Math.PI) * 0.025, 1 - Math.sin(p * Math.PI) * 0.045, 1 + Math.sin(p * Math.PI) * 0.025);
+            mount.dataset.damagePhase = 'settle';
+          } else {
+            state.current = { ...reaction.targetCell }; state.target = { ...reaction.targetCell }; state.from = { ...reaction.targetCell };
+            playerRoot.position.copy(reaction.destination); playerRoot.position.y = 0.33;
+            playerRoot.rotation.z = 0; playerRoot.scale.setScalar(1); setPlayerHitTint(false);
+            state.hitReaction = null; mount.dataset.damagePhase = 'idle';
+          }
+        } else if (state.moving) {
           state.moveT += dt / state.moveDuration;
           const p = Math.min(1, state.moveT);
           const eased = 1 - Math.pow(1 - p, 3);
@@ -1029,6 +1085,8 @@ const DungeonScene = forwardRef<DungeonSceneHandle, Props>(function DungeonScene
       } else exitArrow.visible = false;
       mount.dataset.exitArrow = exitArrow.visible ? 'visible' : 'hidden';
       mount.dataset.playerPosition = `${playerRoot.position.x.toFixed(3)},${playerRoot.position.z.toFixed(3)}`;
+      mount.dataset.playerVisible = playerRoot.visible ? 'true' : 'false';
+      mount.dataset.hitReactionAge = state.hitReaction ? String(Math.round(state.hitReaction.elapsed * 1000)) : '0';
       mount.dataset.currentCell = `${state.current.c},${state.current.r}`;
       mount.dataset.health = String(state.health);
       mount.dataset.spikePhase = (state.elapsed % 1.4).toFixed(3);
