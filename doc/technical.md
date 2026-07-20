@@ -66,4 +66,4 @@
 - 改墙/档案策略：个人输入上限在 `publishDungeon`，展示上限、跨用户解析、资料与 `dungeon_play:<id>` 统计读取在 `useDungeonWall.ts`；乐观合并和加载门禁在 `Archive.tsx`，不得在网络层只取数组首项，也不得让 `loaded` 隐藏已存在的本人卡片。
 - 换 UI/字体/颜色：修改 `DungeonShift.less`、`main.tsx` 的 Fontsource 入口、`icons.tsx` 与 `doc/visual.md`；继续保持像素 UI / 清晰 3D 的边界、硬角图标、语义颜色和 44 px 目标。
 - 改平台能力：只使用 `src/shared` 标准模块；事件文案在 `DungeonShift.tsx`，永久 UUID 以 `games/games.json` 为唯一来源。
-- 发布：正式海报已经由平台 transit 生成并同步到 `public/poster.png`、游戏素材目录和 games repo 同名海报；生产构建、路径审计、UUID 校验及视觉发布候选复验已通过。游戏 Pages 与公开 games 清单已经上线，客户端平台数据库仍等待工作区外的迁移工具入库。
+- 发布：正式海报已经由平台 transit 生成并同步到 `public/poster.png`、游戏素材目录和 games repo 同名海报；生产构建、路径审计、UUID 校验及视觉发布候选复验已通过。游戏 Pages 与公开 games 清单已经上线；客户端平台数据库是否已完成迁移，仍需在 Aigram WebView 以真实用户会话复验。
